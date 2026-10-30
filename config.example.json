@@ -1,0 +1,21 @@
+{
+  "enabled": false,
+  "dsh": {
+    "allowedProviders": ["qodercn", "trae"],
+    "allowedLanes": ["qodercn/dfmodel", "trae/deepseek-v4.1-flash"],
+    "includeDefaultLanes": false,
+    "laneChain": [
+      { "provider": "qodercn", "model": "dfmodel" },
+      { "provider": "trae", "model": "deepseek-v4.1-flash" }
+    ],
+    "reasoningEffort": "lowest",
+    "taskReasoningEfforts": {
+      "chat": "lowest",
+      "diary": "high",
+      "selfReflection": "high",
+      "selfPortrait": "low"
+    },
+    "dailyQuotaResetUtcOffset": 8,
+    "qoderCnFreeUntil": "1970-01-01T00:00:00+08:00"
+  }
+}

@@ -1,0 +1,17 @@
+node_modules/
+.env
+.env.*
+!.env.example
+config.local.json
+state/
+logs/
+*.log
+*.sqlite*
+*.db
+*.pem
+*.key
+*.p12
+*.pfx
+*.zip
+.DS_Store
+Thumbs.db

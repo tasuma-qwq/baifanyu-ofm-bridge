@@ -1,0 +1,23 @@
+{
+  "name": "baifanyu-ofm-bridge",
+  "version": "0.1.0",
+  "description": "白饭鱼的 OFM 接入核心：模型路由、额度冷却、阶段计时与提交审计",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "engines": { "node": ">=22.19.0" },
+  "exports": {
+    ".": "./src/index.js",
+    "./model-lanes": "./src/model-lanes.js",
+    "./turn-stall-guard": "./src/turn-stall-guard.js",
+    "./inference-audit": "./src/inference-audit.js"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "demo": "node examples/offline-demo.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tasuma-qwq/baifanyu-ofm-bridge.git"
+  }
+}

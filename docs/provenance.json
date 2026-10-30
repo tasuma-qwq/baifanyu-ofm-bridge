@@ -1,0 +1,26 @@
+{
+  "sourceRepository": "https://github.com/Derpyu520/qq-bridge",
+  "sourceBaseCommit": "a56164e70a0521a7829138a42eee76066fde2b8b",
+  "snapshotDate": "2026-10-30",
+  "note": "Runtime files include local uncommitted integration work; these files are NOT claimed to exist at the base commit. Hashes describe the local source snapshot. No original Git history is included.",
+  "files": [
+    {
+      "source": "src/model-lanes.js",
+      "sha256": "504a13945d3d695560c34cde58dcf24eb6460fcad3bfa52273cec11c09402110",
+      "public": "src/model-lanes.js",
+      "changes": "Comment-only cleanup"
+    },
+    {
+      "source": "src/turn-stall-guard.js",
+      "sha256": "e3b8d43b43199cd2b144a3b7ddb481e2d4457bf09ab553a47c8216629d87954b",
+      "public": "src/turn-stall-guard.js",
+      "changes": "Line endings normalized"
+    },
+    {
+      "source": "src/inference-audit.js",
+      "sha256": "e69599a9de670f22ecd24b9ab1cef16a78a93a8de82d81d4a33617dc623f7929",
+      "public": "src/inference-audit.js",
+      "changes": "Line endings normalized"
+    }
+  ]
+}

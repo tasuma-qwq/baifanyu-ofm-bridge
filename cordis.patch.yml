@@ -1,0 +1,4 @@
+- insert:
+    - id: baifanyu-ofm-bridge
+      name: baifanyu-ofm-bridge/plugin
+      config: {}

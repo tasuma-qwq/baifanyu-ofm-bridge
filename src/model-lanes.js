@@ -19,7 +19,7 @@ export const KNOWN_EFFORT_VOCAB = Object.freeze({
 });
 
 const EFFORT_STRENGTH = Object.freeze({
-  off: 0, none: 0, light: 1, low: 1, medium: 1.5, high: 2, max: 3, xhigh: 3, extra_high: 3
+  off: 0, none: 0, disabled: 0, light: 1, low: 1, medium: 1.5, balanced: 1.5, high: 2, deep: 2, max: 3, xhigh: 3, extra_high: 3
 });
 
 export function laneEffortVocab(catalog, provider, model) {
@@ -218,6 +218,7 @@ export function classifyLaneFailure(error) {
   if (status === 401 || ['AUTHENTICATION', 'UNAUTHORIZED'].includes(code)) return { kind: 'auth', ms: AUTH_QUOTA_COOLDOWN_MS, reason: message || '认证失败（401）' };
   if (status === 429 || code === 'RATE_LIMIT') return {kind:'rate-limit',ms:60000,reason:message||'请求限频'};
   if (['TRANSPORT','TIMEOUT','SERVER','EMPTY_RESPONSE','TURN_STALL'].includes(code)) return {kind:'transport',ms:TRANSPORT_COOLDOWN_MS,reason:message||code};
+  if (['session/model-unavailable', 'session/model-not-found'].includes(code)) return { kind: 'route', ms: ROUTE_COOLDOWN_MS, reason: message };
   if (/unknown (?:model|provider)|no route|invalid model|model .*disabled|disabled model/i.test(message)) return { kind: 'route', ms: ROUTE_COOLDOWN_MS, reason: message };
   if (/timeout|timed out|ETIMEDOUT|ECONNRESET|ECONNREFUSED|socket hang up|stream|502|503|504|上游/i.test(message)) return { kind: 'transport', ms: TRANSPORT_COOLDOWN_MS, reason: message };
   if (status >= 500) return { kind: 'transport', ms: TRANSPORT_COOLDOWN_MS, reason: message || `上游 ${status}` };

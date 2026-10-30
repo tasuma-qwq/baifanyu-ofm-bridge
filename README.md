@@ -1,86 +1,88 @@
-# 白饭鱼 · OFM 接入核心
+# 白饭鱼 · OFM 接入
 
-让一个持续运行的聊天 Agent 使用 OFM 账号渠道：按任务选模型档位，按渠道记录额度冷却，在故障后决定能否安全继续。
+为 DSH 中的 OFM 免费公开池及用户自有账号渠道设置主备顺序、额度冷却和任务档位，并验证真实模型回答。首次接入默认使用免费公开池。
 
-这是从白饭鱼的实际集成中整理出的 **Node.js 核心模块与接入示例**。你可以直接运行离线演示、阅读和复用路由逻辑；连接真实模型需要已有 DSH、OFM 插件和使用者自己的渠道授权。
+**v0.2.0** 提供原生 `/bfy-ofm` 命令、环境诊断、配置生成及独立文本回合入口。把本仓库交给 DSH 时，可要求它按 [AGENTS.md](AGENTS.md) 完成接入；涉及登录会话和真实调用的步骤仍需你的授权。
 
-**Our Free Model 是 [Ebony-Vinyl/dsh-our-free-model](https://github.com/Ebony-Vinyl/dsh-our-free-model) 的项目。** 本仓库分享白饭鱼在其上的接入与治理实现，保留 [qq-bridge](https://github.com/Derpyu520/qq-bridge) 的来源与许可。这里不附带账号、额度或模型服务。
+Our Free Model 是 [Ebony-Vinyl/dsh-our-free-model](https://github.com/Ebony-Vinyl/dsh-our-free-model) 的项目。本仓库提供其上的接入与治理，保留 [qq-bridge](https://github.com/Derpyu520/qq-bridge) 的来源和 MIT 许可。这里不附带账号、额度或模型服务，完整 QQ bot 和记忆系统另行维护。
 
-## 先运行看看
+## 在 DSH 中安装
 
-需要 Node.js 22.19+，建议 Node.js 24。无第三方依赖，不需要 `npm install`。
+前提：DSH 正常运行，OFM 已安装并启用免费公开池；首次使用不要求添加账号。当前验收宿主与范围见 [验证记录](docs/validation.md)。
+
+纯 web profile：
+
+```sh
+dsh plugin --profile web add git+https://github.com/tasuma-qwq/baifanyu-ofm-bridge.git
+```
+
+桌面端通过应用的插件管理器安装此 GitHub 仓库；不要用 CLI 修改 Electron 管理的 desktop profile。按宿主提示重新加载后：
+
+```text
+/bfy-ofm doctor
+/bfy-ofm setup
+/bfy-ofm chat
+```
+
+setup 从当前目录配置公开免费模型，不自动加入账号、EAC 或可编辑聚合链。命令选好模型后，发送普通消息开始推理。插件不接管其他会话；原生选模同时保存 DSH 的新会话默认选择。
+
+公开池可能限流、拥堵、超时，受网络和地区影响，模型也会变化，不保证免费无限或长期可用。[公开池限制与添加自己账号的方法](docs/public-pool-and-accounts.md)给出了具体入口和切换步骤。
+
+## 让 Agent 完成首次接入
+
+需要 Node.js 22.19+，建议 24。命令行入口可独立使用，不要求先安装本仓库的原生插件。
 
 ```sh
 git clone https://github.com/tasuma-qwq/baifanyu-ofm-bridge.git
 cd baifanyu-ofm-bridge
+npm ci --ignore-scripts
 npm test
 npm run demo
 ```
 
-演示完全离线，使用固定时间和虚构事件，不读取本机登录态，也不发送 QQ 消息。它依次展示日常最低档、反思高档、日额度冷却、主备选择和未知行动不重试。临时演示文件会在结束时清理。
+最后两步是离线验证，不调用模型。接到真实 DSH：
 
-## 实现了什么
+```sh
+npm run doctor -- --use-local-session
+npm run setup -- --use-local-session
+npm run smoke -- --allow-model-call --use-local-session
+```
 
-| 问题 | 实现 |
+按顺序执行：检查目录 → 配置免费公开池 → 授权一次短调用后验证。添加自己的账号后可用 --lanes 显式选择主备。`--use-local-session` 仅在你明确允许读取本机 DSH 会话时使用；也可用 DSH_AUTH_COOKIE / DSH_LAUNCH_TOKEN 环境变量。不要公开这些值。默认地址为 http://127.0.0.1:3080；独立端口与目录分别用 --base-url 和 --dsh-home，并在各步保持一致。
+
+配置默认在 `DSH_HOME/baifanyu-ofm/config.local.json`，与原生插件共享；项目隔离用 --config PATH。不同的已有配置不会被 setup 覆盖。旧 config.example.json 保留关闭状态，作为核心策略参考；新用户用 setup 按当前目录生成。
+
+smoke 创建空工作目录和独立会话，收到事件订阅 baseline 后才提交固定短提示词。只有 `smokeMatched: true`、非空正文和 `status: completed` 同时成立才证明本次文本接入成功。当前目录里有模型并不代表渠道可调用或免费。
+
+完整连接、普通文本任务、故障定位和代码复用见 [接入说明](docs/integration.md)。
+
+## 已实现的行为
+
+| 场景 | 行为 |
 | --- | --- |
-| 模型可选但账号渠道不可用 | 用当前 DSH 模型目录过滤候选，再跳过冷却渠道 |
-| 一个渠道没额度，让整个 bot 停摆 | 按 `provider/model` 持久化冷却；其他渠道仍可被选择 |
-| 不同渠道的思考档位名称不同 | 从模型目录读取词表，将 `lowest`、`high` 等偏好映射为合法档位 |
-| 旧免费活动过期后继续选中 | 接入示例要求 CN 截止时间明确且未到期；示例配置初始关闭 |
-| 长工具执行被当成模型卡死 | 工具执行暂停模型阶段计时，全部返回后恢复；工具自身另设期限 |
-| 上游卡死时可能已发送过消息 | 最多两次尝试，取消未确认、工具已调用或行动结果未知时不自动重放 |
-| “发起过请求”被当作“成功回复” | 本地审计区分 pending、completed、failed、unknown |
+| 当前目录不含候选 | 跳过该渠道，输出可定位的错误 |
+| 提交前主渠道选模失败 | 保存失败原因并冷却，最多再选择一次备用 |
+| 不同渠道的思考档位不同 | 优先读取目录词表，将最低/高档偏好映射到合法值 |
+| 额度、认证、限频或上游故障 | 按 provider/model 分别记录冷却 |
+| 工具执行与模型等待 | 核心看门狗分阶段计时，支持嵌套工具结果 ID |
+| 已提交后超时、断线或行动未知 | 独立运行器不自动重放，保留 unknown 供核对 |
+| 重复配置或并发写状态 | 相同配置幂等，不覆盖不同配置，写入者加锁 |
+| 日志与审计 | 本地只保存提交元数据，不记录提示词、工具参数或账号密钥 |
 
-`completed` 只表示宿主调用方确认该逻辑提交完成，不代表 QQ 消息已送达，也不是上游账单凭证。
+原生命令负责诊断、配置和当前会话选模；冷却与完整回合验收由 CLI runner 使用。完整工具 Agent 可复用核心，但仍需自己的权限、取消和行动回执接线。本项目不会安装 QQ 或替你登录渠道。
 
-## 数据怎么走
+## 边界与费用
 
-```mermaid
-flowchart LR
-  A[聊天或后台任务] --> B[桥接层：任务与权限]
-  B --> C[本仓库：渠道策略与阶段计时]
-  C --> D[DSH 会话]
-  D --> E[Our Free Model 插件]
-  E --> F[用户自己的已授权渠道]
-  B <--> G[(长期记忆与原文)]
-  C --> H[(本地冷却与提交审计)]
-```
+- 上游可能消耗免费额度、Credits 或付费余额；本仓库不能证明每次请求免费，未知用量不当作零。
+- CN 权益须核实并明确期限，不靠修改日期延长实际权益。
+- 模型内容会发到所选上游；DSH 按宿主策略保存会话。冷却原因和来源 ID 也可能敏感，分享前处理。
+- CLI 选模可能临时改变新会话默认值，结束时在未被其他使用者更改的前提下恢复；未确认的清理留有记录。详见接入说明。
+- 单次验证不保证其他账户、网络或未来时刻可用，也不证明长期稳定。未知结果不自动重试。
 
-OFM 负责模型接入及上游协议；本仓库负责调用前选路、冷却与宿主侧的安全约束。长期记忆由白饭鱼自己的存储层维护，不绑定某个模型渠道。
+## 开发与来源
 
-## 如何接入自己的项目
+`src/` 包含策略、审计、DSH 客户端、运行器和原生命令；`bin/` 是 CLI；`test/` 包含核心回归与本地 HTTP/WebSocket 契约测试；`examples/` 是离线演示。
 
-1. 按 [OFM 上游说明](https://github.com/Ebony-Vinyl/dsh-our-free-model) 安装插件，在你自己的 DSH 中完成合法授权。
-2. 复制 `config.example.json` 为 `config.local.json`。核对当前模型目录、账号权益与活动期限，再设置 `enabled: true`。
-3. CN 截止时间的示例值为已过期时间。只有核对到新的有效权益时才修改；渠道名称或模型 ID 变化时也要更新配置。
-4. 参考 [宿主接入说明](docs/integration.md)，先等待模型选择确认，再提交任务。把真实事件流接给阶段计时器，把取消和行动回执接给安全重试判断。
+[架构](docs/architecture.md) · [验证记录](docs/validation.md) · [插件市场申请条件](docs/marketplace.md) · [记忆系统预告](docs/memory-preview.md)
 
-`selectSessionRoute()` 只选择模型，不发起推理、不登录账号、不发送消息。完整 QQ 机器人、宿主安装器、账号渠道包和记忆系统不在这次发布范围中。
-
-## 目录
-
-```text
-src/model-lanes.js       生产实现提取：允许链、档位、错误分类、冷却、有限尝试
-src/turn-stall-guard.js  生产实现提取：模型阶段静默与活跃预算
-src/inference-audit.js   生产实现提取：提交元数据审计
-src/session-route.js     本次整理的宿主选模适配与保守重放判断
-examples/               不联网的可运行示例
-test/                   核心回归与公开适配契约测试
-docs/architecture.md    设计细节与边界
-docs/integration.md     真实宿主需要提供的接线
-docs/video-script.md    抖音讲解稿、分镜和发布文案
-```
-
-## 费用、隐私与验证范围
-
-- 账号渠道也可能消耗 Credits 或付费余额；本项目无法证明每次请求免费。已知额度耗尽、活动到期可以阻止相应选路，未报告余额或 usage 时保留未知。
-- 一个逻辑回合可能包含多次模型步骤或上游请求。提交审计、token 统计和真实扣款分别核对，不把 API 等价估值写成账单。
-- 推理内容仍会发送到你选择的上游。本仓库不携带凭据，不负责导入登录态。冷却文件里的错误原因与审计里的来源 ID 也可能敏感，分享前需处理。
-- 本仓库的测试和演示均离线，只能验证策略与事件处理。本地实际部署曾进行独立供模及用户来信回复验证；这不构成任何其他账号或未来时刻的可用性承诺，也不证明长期稳定。
-- 这次发布只整理独立副本，没有替换正在运行的白饭鱼。
-
-记忆系统的下期内容预告见 [记忆系统说明](docs/memory-preview.md)。
-
-## 来源与许可
-
-MIT。保留本仓库 [LICENSE](LICENSE)、[NOTICE](NOTICE.md) 和 [qq-bridge 原许可](third_party/qq-bridge-LICENSE)。源码快照与改动范围见 [provenance.json](docs/provenance.json)。OFM 与 DSH 的代码及渠道包没有打包进本仓库，使用时遵循各自的许可和渠道规则。
+MIT。保留 [LICENSE](LICENSE)、[NOTICE](NOTICE.md) 和 [qq-bridge 原许可](third_party/qq-bridge-LICENSE)。初始提取快照见 [provenance.json](docs/provenance.json)。本仓库不重新分发 OFM 渠道包或 DSH 代码；互操作不表示上游认可。

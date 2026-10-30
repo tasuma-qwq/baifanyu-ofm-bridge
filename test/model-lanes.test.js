@@ -205,3 +205,10 @@ test('目录读不到时用内置词表兜底；链上显式钉档优先；钉�
   assert.equal(resolveLaneEffort({ lane: { provider: 'qoder', model: 'brand-new-model' }, catalog, globalEffort: 'low' }), undefined);
   assert.equal(resolveLaneEffort({ lane: trae, catalog, globalEffort: '' }), undefined);
 });
+
+test('public-pool reasoning vocab maps disabled and balanced/deep without inventing effort ids', () => {
+  const lane = { provider: 'our-free-model', model: 'public-fixture' };
+  const directory = efforts => ({ groups: [{ id: lane.provider, models: [{ id: lane.model, reasoning: { efforts: efforts.map(id => ({ id })) } }] }] });
+  assert.equal(resolveLaneEffort({ lane, catalog: directory(['disabled', 'low', 'high', 'max']), globalEffort: 'lowest' }), 'disabled');
+  assert.equal(resolveLaneEffort({ lane, catalog: directory(['light', 'balanced', 'deep']), globalEffort: 'high' }), 'deep');
+});

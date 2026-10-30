@@ -1,21 +1,33 @@
 {
   "name": "baifanyu-ofm-bridge",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "白饭鱼的 OFM 接入核心：模型路由、额度冷却、阶段计时与提交审计",
   "type": "module",
   "private": true,
   "license": "MIT",
+  "main": "./src/index.js",
+  "bin": { "bfy-ofm": "./bin/bfy-ofm.mjs" },
+  "files": ["bin", "src", "docs", "examples", "third_party", "config.example.json", "cordis.patch.yml", "README.md", "AGENTS.md", "LICENSE", "NOTICE.md"],
   "engines": { "node": ">=22.19.0" },
   "exports": {
     ".": "./src/index.js",
     "./model-lanes": "./src/model-lanes.js",
     "./turn-stall-guard": "./src/turn-stall-guard.js",
-    "./inference-audit": "./src/inference-audit.js"
+    "./inference-audit": "./src/inference-audit.js",
+    "./plugin": "./src/plugin.js",
+    "./client": "./src/dsh-client.js",
+    "./runner": "./src/runner.js"
   },
   "scripts": {
     "test": "node --test test/*.test.js",
-    "demo": "node examples/offline-demo.mjs"
+    "demo": "node examples/offline-demo.mjs",
+    "doctor": "node bin/bfy-ofm.mjs doctor",
+    "setup": "node bin/bfy-ofm.mjs setup",
+    "smoke": "node bin/bfy-ofm.mjs smoke"
   },
+  "dependencies": { "ws": "8.22.0", "js-yaml": "4.3.2" },
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } },
+  "keywords": ["dsh-plugin", "deepseek-harness", "ofm", "model-routing"],
   "repository": {
     "type": "git",
     "url": "https://github.com/tasuma-qwq/baifanyu-ofm-bridge.git"

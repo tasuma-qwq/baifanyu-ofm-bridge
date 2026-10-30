@@ -38,10 +38,13 @@ export function createTurnStallGuard({stallMs=DEFAULT_TURN_STALL_MS,limitForSess
       clearTimer(e);e.phase='tool';e.hadToolCall=true;e.tools.add(String(d.callId??'tool'));return true;
     }
     if(type==='tool/result'){
-      e.tools.delete(String(d.callId??'tool'));
+      e.tools.delete(String(d.callId??d.toolCallId??d.message?.toolCallId??d.message?.source?.callId??'tool'));
       if(!e.tools.size)arm(sid,e);return true;
     }
     if(['question/requested','approval/requested'].includes(type)){clearTimer(e);e.phase='question';return true;}
+    if(['question/resolved','approval/resolved'].includes(type)&&e.phase==='question'){
+      if(e.tools.size)e.phase='tool';else arm(sid,e);return true;
+    }
     if(SUBSTANTIVE_EVENTS.includes(type)&&e.phase==='model'&&meaningful(event)){arm(sid,e);return true;}
     return false;
   }

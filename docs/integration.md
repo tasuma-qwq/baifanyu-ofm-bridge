@@ -1,87 +1,66 @@
-# 接到自己的 DSH 宿主
+# 接入自己的 DSH
 
-前提：你已经有 DSH 会话、已加载 OFM 并授权自己的渠道。此文不提供登录态提取、凭据导入或账号池。
+v0.2.0 提供原生 bundle 和完整单回合入口，要求正常运行的 DSH 及已安装的 OFM。首次配置默认使用免费公开池，不需要添加账号。公开池受限与账号配置见 public-pool-and-accounts.md。
 
-## 1. 选择模型后才提交
+## 原生插件
 
-```js
-import fs from 'node:fs';
-import { createLaneLedger, selectSessionRoute } from '../src/index.js';
+纯 web profile：
 
-const config = JSON.parse(fs.readFileSync('config.local.json', 'utf8'));
-const ledger = createLaneLedger({
-  file: './state/model-lanes.json',
-  policy: () => config.dsh,
-  log: message => console.error(message)
-});
-
-// api 由你已有的 DSH 客户端提供。不得从本示例猜测认证方式。
-// sessionId 是你创建或恢复的真实会话。
-// catalog 是从该宿主当前 session.modelCatalog 能力取得并解包后的目录。
-const route = await selectSessionRoute({
-  api, sessionId, config, catalog, ledger, task: 'chat'
-});
-// 到这里才允许调用已有的 prompt 提交逻辑。
-// 先建立事件订阅，再提交；不要忽略任何选模异常。
+```sh
+dsh plugin --profile web add git+https://github.com/tasuma-qwq/baifanyu-ofm-bridge.git
 ```
 
-`api.callUnary('session/selectModel', { sessionId, provider, model, reasoningEffort })` 必须返回显式成功的 `{ result: { ok: true, value: ... } }`，或已解包的 `{ ok: true, value: ... }`。如果你的客户端返回值不同，先在自己的适配器转换并检查失败，不要直接假定成功。
+web 换成实际 profile。桌面端通过应用的插件管理器安装仓库；Electron 管理的 desktop profile 不通过 CLI 修改。按宿主提示重新加载后，在会话输入：
 
-每次新任务重新读取目录、策略与冷却状态，避免把曾经选中的备用渠道永久缓存。模型 ID、能力方法与事件格式应以你安装的 DSH/OFM 版本为准。
-
-## 2. 接收事件并处理卡死
-
-```js
-import { createTurnStallGuard } from '../src/index.js';
-
-const guard = createTurnStallGuard({
-  onStall: async (sessionId, info) => {
-    // 由宿主校验 info.turnId，撤销旧行动权限，停止旧回合并清理 inbox。
-    // 核对取消回执和是否调用过工具；不要在这里直接重发聊天内容。
-    await handleStallInYourHost(sessionId, info);
-  }
-});
-
-// 提交成功后：guard.expect(sessionId)
-// 事件流：guard.observe(sessionId, event)
-// 回合结束或取消后：guard.forget(sessionId)
-// 进程退出前：guard.clearAll()
+```text
+/bfy-ofm doctor
+/bfy-ofm setup
+/bfy-ofm chat
 ```
 
-把 `turn/start`、`turn/end`、有效 assistant 文本、`tool/call`、`tool/result` 等原始事件传入。丢失事件或只传文本会破坏阶段判断。工具与用户确认的期限由宿主独立处理。
+setup 默认配置公开池，其他账号渠道需先自行添加，再以 provider/model 显式指定，多个候选用逗号分隔。选模不发起推理，发送普通消息才调用模型。chat 使用最低合法档位；diary/selfReflection 偏好高档。
 
-某些 DSH 版本的 `session/cancel` 保留队列。因此“取消接口返回成功”不足以确认旧任务完全停止；需要宿主验证不再有旧的活动回合、排队输入或仍有效的行动权限。不要把归档会话当作取消。
+配置默认在 `DSH_HOME/baifanyu-ofm/config.local.json`。未设 DSH_HOME 时使用用户主目录的 `.dsh`。插件只处理命令所在的会话，不自动接管所有会话；DSH 的 selectModel 还会保存新会话默认选择，命令会提示这一点。
 
-## 3. 故障后是否允许重新提交
+## 命令行首次接入
 
-```js
-import { classifyLaneFailure, mayReplayTurn, runLaneAttempts, laneKey } from '../src/index.js';
+需要 Node.js 22.19+，建议 24。在克隆仓库里运行 `npm ci --ignore-scripts`。
 
-await runLaneAttempts({
-  run: async attempt => {
-    // 每一次都重新选路；第一次的失败需要在宿主中冷却对应 route。
-    return await runOneTurnInYourHost(attempt);
-  },
-  canRetry: error => mayReplayTurn({
-    error,
-    cancelConfirmed: error.cancelConfirmed,
-    hadToolCall: error.hadToolCall,
-    externalActionState: error.externalActionState
-  })
-});
+授权可用环境变量 DSH_AUTH_COOKIE 或当前启动链接的 DSH_LAUNCH_TOKEN。不要把带 token 的 URL 传给 --base-url。用户明确允许访问本机 DSH 登录会话时，也可使用 --use-local-session；只有该标志会读取 DSH_HOME 的会话签名密钥，密钥仅在内存中使用，不导入或导出渠道凭据。
 
-// 在 runOneTurnInYourHost 的错误处理里：
-// const failure = classifyLaneFailure(error);
-// if (failure) ledger.cool(laneKey(route), failure);
-// 按真实状态填入安全标记后再抛出；未知值保持未知。
+```sh
+npm run doctor -- --use-local-session
+npm run setup -- --use-local-session
+npm run smoke -- --allow-model-call --use-local-session
 ```
 
-这些 `runOneTurnInYourHost` / `handleStallInYourHost` 是你自己的宿主逻辑，占位名称不代表本包导出了完整机器人运行器。选模失败时不提交；所有渠道不可用时保留任务；曾调用任何工具时，公开示例采取不重放的保守规则。
+逐步执行：检查目录、配置公开池、获得短模型调用授权后执行 smoke。公开池没有可用候选时停止并说明，不自动切到账号渠道。默认地址 http://127.0.0.1:3080；端口不同时每次提供相同 --base-url。独立实例每次提供 --dsh-home。CLI 与原生插件共享默认配置；项目隔离用 --config PATH 和 --state PATH。
 
-## 4. 区分三本账
+doctor 只验证目录 RPC，不证明事件流或模型可用。smoke 在空工作目录创建独立会话，等事件订阅收到 baseline 后才提交固定短提示词；非空正文、completed 和精确 BFY_OK 同时成立才成功。目录可见、选模成功、prompt 已接收都不足以判为成功。
 
-- 提交审计：逻辑任务由哪个渠道承接、宿主是否确认完成。
-- 上游用量：实际模型步骤、token 与重试；以真实响应或 OFM 记录为准。
-- 账户费用：剩余额度、Credits 或账单；上游不提供时保持未知。
+## 普通文本任务
 
-只在真实回合完成时调用 `audit.finish(id, { ok: true })`。它既不是消息投递回执，也不会自动证明零扣费。
+```sh
+node bin/bfy-ofm.mjs run --prompt-file ./prompt.txt --allow-model-call --use-local-session
+node bin/bfy-ofm.mjs status
+```
+
+正文从文件读取，不放进命令行和本地审计。DSH 仍按自身策略保存会话，内容仍会发往所选上游。run/smoke 面向最小纯文本任务；观察到工具调用时请求停止并保留未知状态，不自动重放。这不是完整工具 Agent 的权限隔离器。
+
+## 故障和恢复
+
+- 提交前选模失败：冷却失败渠道，最多选择一次备用，不增加允许集之外的渠道。
+- 提交后不自动重放：包括断线、超时、工具调用或接收回执未知。HTTP 错误不证明上游没有接受请求。
+- state/<runId>.json 只记路由和状态；pending 在 status 中显示 unknown，保留供核对，不视为可以自动重试的队列。
+- writer.lock 限制单进程写入。异常退出后，核对 PID 确已退出再移走锁；保留 unknown 记录，核对 DSH 会话后才决定是否重发。
+- setup 内容相同可重复执行；已有不同配置时返回 CONFIG_EXISTS，不覆盖。使用新 --config 路径或人工合并。
+- CLI 选模暂时触及 DSH 的新会话默认选择；结束时仅在默认值仍与本次选择一致时恢复之前的值，保留其他使用者的新选择。恢复不确认会留下 .cleanup.json。成功会话归档，未知会话保留检查。
+- 空工作目录保留，因为 DSH 仍引用它；不删除用户工作区。
+
+CN dfmodel 只有核实权益并提供未来 --cn-until 才进入生成配置。修改日期不会延长上游权益，也不能证明免费。
+
+## 复用核心
+
+`baifanyu-ofm-bridge/client` 导出 DshClient；`baifanyu-ofm-bridge/runner` 导出 runOneTurn，参数包括 client、config、stateDir、prompt、timeoutMs。根入口仍保留原来的核心函数。
+
+selectSessionRoute 只选模，runLaneAttempts 只限制次数。完整工具 Agent 仍须提供行动权限、回执和取消核对；mayReplayTurn 的未知值保持未知。看门狗支持 data.callId、data.toolCallId、data.message.toolCallId、data.message.source.callId；审批恢复由宿主传入 question/resolved 或 approval/resolved。

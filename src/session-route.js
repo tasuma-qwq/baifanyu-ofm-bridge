@@ -33,10 +33,18 @@ export async function selectSessionRoute({
   const reasoningEffort = resolveLaneEffort({ lane, catalog, globalEffort });
   const route = { ...lane, ...(reasoningEffort ? { reasoningEffort } : {}) };
   // Await this result before prompt submission. Never ignore ok:false.
-  const envelope = await api.callUnary('session/selectModel', { sessionId, ...route });
+  let envelope;
+  try {
+    envelope = await api.callUnary('session/selectModel', { sessionId, ...route });
+  } catch (error) {
+    error.route = route;
+    throw error;
+  }
   const result = envelope?.result ?? envelope;
   if (result?.ok !== true) {
-    throw failure('DSH 未确认模型选择成功，未提交生成', result?.error?.code ?? 'MODEL_SELECTION_FAILED');
+    throw Object.assign(failure(result?.error?.message || 'DSH 未确认模型选择成功，未提交生成', result?.error?.code ?? 'MODEL_SELECTION_FAILED'), {
+      status: result?.error?.status, route
+    });
   }
   return { ...route, skipped };
 }

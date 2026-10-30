@@ -192,3 +192,14 @@ test('没有 sessionId 的事件不参与记账（事件流中混着全局快照
   assert.deepEqual(timers.scheduled(), []);
   assert.deepEqual(guard.snapshot(), {});
 });
+
+test('current and legacy nested tool-result identities rearm the model timer', () => {
+  for (const data of [{ toolCallId: 'a' }, { message: { toolCallId: 'a' } }, { message: { source: { callId: 'a' } } }]) {
+    const { guard, timers } = harness();
+    guard.observe(SESSION, turnStart(1));
+    guard.observe(SESSION, { type: 'tool/call', data: { turn: 1, callId: 'a' } });
+    guard.observe(SESSION, { type: 'tool/result', data: { turn: 1, ...data } });
+    assert.equal(guard.snapshot()[SESSION].phase, 'model');
+    assert.equal(timers.scheduled().length, 1);
+  }
+});

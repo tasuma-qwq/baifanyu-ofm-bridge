@@ -18,6 +18,8 @@ dsh plugin --profile web add baifanyu-ofm
 
 npm 包的 repository 字段指回本仓库，供市场将 npm 分发与已提交的仓库条目关联。版本和可下载状态以 [npm 包页面](https://www.npmjs.com/package/baifanyu-ofm)为准；npm 发布不等于市场扫描已完成。原生 bundle 加载 `baifanyu-ofm/plugin`。
 
+2026-11-01 已正式发布 `baifanyu-ofm@0.2.0`，公开 registry 的 latest 指向 0.2.0。已验证匿名下载、安装包完整性及独立 DSH_HOME 中按包名安装；上述 PR 和 Issue 的正文已补充 npm 安装命令和包页面。等待各市场后续扫描或审核，不将 npm 发布成功表述为所有市场已上架。
+
 v0.2.0 有 dsh.bundle、cordis.patch.yml 与实际 /bfy-ofm 命令，可按 model 分类准备申请。功能是确认后的渠道策略、任务档位、冷却与接入验证，不提供模型源、账号或完整 QQ bot。
 
 ## 应用内市场的社区注册表

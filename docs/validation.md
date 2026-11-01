@@ -18,3 +18,11 @@ v0.2.0 的本地验收记录，日期 2026-10-31（Asia/Tokyo）。
 ## npm 分发准备（2026-11-01）
 
 npm 包名改为 baifanyu-ofm，版本 0.2.0；GitHub 仓库地址保留。改名后的 52 项测试通过，发布预演、安装包白名单与隐私检查通过；tarball 已在全新目录安装，并在独立 DSH_HOME 中验证 baifanyu-ofm/plugin 加载、/bfy-ofm 注册和 doctor 成功。上述分发验证没有调用真实模型。公开 registry 的可下载状态需在正式发布后单独读取和安装确认。
+
+## npm 公开下载验收（2026-11-01）
+
+- baifanyu-ofm@0.2.0 已正式发布；registry 的完整及精简元数据都列出该版本，latest 指向 0.2.0，repository 正确关联本仓库。
+- 使用不含登录凭据的配置，从官方 registry 下载并安装 0.2.0，CLI 帮助正常。下载 tarball 的 SHA-512 与已审验发布包一致。
+- 在全新 DSH_HOME 中实际执行 `dsh plugin --profile web add baifanyu-ofm`，安装得到 0.2.0，组合配置确认加载 baifanyu-ofm/plugin。
+- 首发占位版本 0.0.0-stage 曾短暂出现在元数据和缓存中；已以确切版本及最新元数据确认实际运行包，未把占位版本当作验收成功。
+- 此次发布使用临时调用的 npm 11.21.1 完成正常交互式 2FA，没有修改全局 npm 版本、创建绕过 2FA 的 token 或增加模型调用。

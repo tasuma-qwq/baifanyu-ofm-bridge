@@ -4,7 +4,13 @@ v0.2.0 提供原生 bundle 和完整单回合入口，要求正常运行的 DSH 
 
 ## 原生插件
 
-纯 web profile：
+纯 web profile 通过 npm 安装：
+
+```sh
+dsh plugin --profile web add baifanyu-ofm
+```
+
+GitHub 源码安装仍然可用：
 
 ```sh
 dsh plugin --profile web add git+https://github.com/tasuma-qwq/baifanyu-ofm-bridge.git
@@ -61,6 +67,6 @@ CN dfmodel 只有核实权益并提供未来 --cn-until 才进入生成配置。
 
 ## 复用核心
 
-`baifanyu-ofm-bridge/client` 导出 DshClient；`baifanyu-ofm-bridge/runner` 导出 runOneTurn，参数包括 client、config、stateDir、prompt、timeoutMs。根入口仍保留原来的核心函数。
+`baifanyu-ofm/client` 导出 DshClient；`baifanyu-ofm/runner` 导出 runOneTurn，参数包括 client、config、stateDir、prompt、timeoutMs。根入口仍保留原来的核心函数。npm 包名已改为 baifanyu-ofm；已安装早期 baifanyu-ofm-bridge 源码包时，先通过宿主卸载旧包，避免同时注册 /bfy-ofm。
 
 selectSessionRoute 只选模，runLaneAttempts 只限制次数。完整工具 Agent 仍须提供行动权限、回执和取消核对；mayReplayTurn 的未知值保持未知。看门狗支持 data.callId、data.toolCallId、data.message.toolCallId、data.message.source.callId；审批恢复由宿主传入 question/resolved 或 approval/resolved。

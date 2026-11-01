@@ -5,7 +5,7 @@ import { discoverLanes, makeConfiguration, saveConfiguration, acquireStateLock, 
 import { selectSessionRoute } from './session-route.js';
 import { createLaneLedger, classifyLaneFailure, laneKey } from './model-lanes.js';
 
-export const name = 'baifanyu-ofm-bridge';
+export const name = 'baifanyu-ofm';
 export const inject = ['commands', 'sessionController'];
 export function apply(ctx, options = {}) {
   const file = options.configFile ?? defaultConfigFile();

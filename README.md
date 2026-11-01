@@ -10,7 +10,13 @@ Our Free Model 是 [Ebony-Vinyl/dsh-our-free-model](https://github.com/Ebony-Vin
 
 前提：DSH 正常运行，OFM 已安装并启用免费公开池；首次使用不要求添加账号。当前验收宿主与范围见 [验证记录](docs/validation.md)。
 
-纯 web profile：
+纯 web profile 推荐通过 npm 安装：
+
+```sh
+dsh plugin --profile web add baifanyu-ofm
+```
+
+需要核对源码或从 GitHub 安装时：
 
 ```sh
 dsh plugin --profile web add git+https://github.com/tasuma-qwq/baifanyu-ofm-bridge.git
@@ -23,6 +29,8 @@ dsh plugin --profile web add git+https://github.com/tasuma-qwq/baifanyu-ofm-brid
 /bfy-ofm setup
 /bfy-ofm chat
 ```
+
+npm 包名为 `baifanyu-ofm`，GitHub 仓库仍为 `tasuma-qwq/baifanyu-ofm-bridge`。如果已安装早期名为 `baifanyu-ofm-bridge` 的源码包，先通过同一宿主的插件管理器卸载旧包，再安装新包，避免重复注册命令；配置目录 `DSH_HOME/baifanyu-ofm/` 保持不变。
 
 setup 从当前目录配置公开免费模型，不自动加入账号、EAC 或可编辑聚合链。命令选好模型后，发送普通消息开始推理。插件不接管其他会话；原生选模同时保存 DSH 的新会话默认选择。
 

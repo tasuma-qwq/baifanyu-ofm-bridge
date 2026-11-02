@@ -46,7 +46,12 @@ export async function selectSessionRoute({
       status: result?.error?.status, route
     });
   }
-  return { ...route, skipped };
+  const selected = result?.value?.selected;
+  if (selected && (selected.provider !== route.provider || selected.model !== route.model
+    || route.reasoningEffort && selected.reasoningEffort !== route.reasoningEffort)) {
+    throw Object.assign(failure('宿主确认的实际路由或档位与本次选择不一致', 'MODEL_SELECTION_MISMATCH'), { route });
+  }
+  return { ...route, ...(selected?.reasoningEffort ? { reasoningEffort: selected.reasoningEffort } : {}), skipped };
 }
 
 /** Conservative host-side decision, for use with runLaneAttempts(). */

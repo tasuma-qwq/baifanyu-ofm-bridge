@@ -16,3 +16,5 @@ qq-bridge 上游：[Derpyu520/qq-bridge](https://github.com/Derpyu520/qq-bridge)
 Our Free Model 上游：[Ebony-Vinyl/dsh-our-free-model](https://github.com/Ebony-Vinyl/dsh-our-free-model)。本仓库没有重新分发 OFM 源码、渠道包或其内置凭据。DSH 是独立宿主。项目名只用于说明互操作关系，不表示各上游对本项目的认可。
 
 这次发布从文件白名单生成，未带入原工作区 Git 历史、配置、日志、数据库、聊天记录、日记、人格卡或账号授权资料。
+
+0.3.0新增 DeepSeek 专用接入、宿主 LLM 路由守卫、当前会话官方兜底及 OFM 选号结果的只读观察。仅声明官方 scoped OFM npm 依赖，不复制其代码到本包。观察接口不改账号调度，账号标识仅在单次调用的内存集合中用于去重，回执只保存数量和切换布尔值。用户本机检修报告不在发布文件白名单中。

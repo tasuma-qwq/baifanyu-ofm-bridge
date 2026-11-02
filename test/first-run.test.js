@@ -104,8 +104,9 @@ test('default setup selects public pool only, excluding accounts, EAC prefixes a
     { id: 'trae', models: [{ id: 'deepseek-v4.1-flash' }] },
     { id: 'our-free-model', models: ['combo:recommended-free', 'opencode/deepseek-v4.1-flash-free', 'deepseek-v4.1-flash-free', 'glm-5.3-flash-free'].map(id => ({ id })) }
   ] };
-  assert.deepEqual(publicPoolLanes(mixed), ['our-free-model/deepseek-v4.1-flash-free', 'our-free-model/glm-5.3-flash-free']);
+  assert.deepEqual(publicPoolLanes(mixed), ['our-free-model/deepseek-v4.1-flash-free']);
   assert.deepEqual(makeConfiguration(mixed).dsh.allowedProviders, ['our-free-model']);
+  assert.equal(makeConfiguration(mixed).dsh.reasoningEffort, 'preserve');
   assert.throws(() => makeConfiguration({ groups: [{ id: 'trae', models: [{ id: 'deepseek-v4.1-flash' }] }] }), { code: 'PUBLIC_POOL_UNAVAILABLE' });
 });
 test('local credential access is opt-in even when a DSH home is provided', async t => {
@@ -173,15 +174,15 @@ test('native plugin registers a useful command; doctor/setup never invoke infere
   const calls = [];
   const file = path.join(temp(t), 'native-config.json');
   const ctx = { commands: { register: d => { definition = d; } }, sessionController: {
-    modelCatalog: async () => catalog,
+    modelCatalog: async () => ({ ...catalog, groups: [{ id: 'our-free-model', models: [{ id: 'deepseek-fixture-free', reasoning: { efforts: [{ id: 'high' }] } }] }] }),
     selectModel: async route => { calls.push(route); return { selected: route }; }
-  } };
-  apply(ctx, { configFile: file });
+  }, on() {}, inject() {}, get() {} };
+  apply(ctx, { configFile: file, ofmControl: async () => ({ enabled: true }) });
   assert.equal(definition.name, 'bfy-ofm');
   const invoke = rawInput => definition.handler({ agent: { id: 'invoking-session' }, rawInput, signal: new AbortController().signal });
   assert.equal((await invoke('doctor')).kind, 'success');
-  assert.equal((await invoke('setup our-free-model/fixture-free')).kind, 'success');
-  assert.equal(calls.length, 0);
+  assert.equal((await invoke('onboard')).kind, 'success');
+  assert.equal(calls.length, 1);
   assert.equal((await invoke('chat')).kind, 'success');
   assert.equal(calls[0].sessionId, 'invoking-session');
   assert.equal(calls[0].provider, 'our-free-model');

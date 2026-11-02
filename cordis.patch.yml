@@ -1,4 +1,10 @@
 - insert:
+    - id: baifanyu-ofm-upstream
+      name: '@ebony-vinyl/dsh-our-free-model'
+      disabled: !!js >-
+        [...ctx.get('loader').entries()].some(entry => entry.options.id !== 'baifanyu-ofm-upstream' && (entry.options.id === 'our-free-model' || ['dsh-our-free-model', '@ebony-vinyl/dsh-our-free-model'].includes(entry.options.name)))
+      config:
+        distribution: managed
     - id: baifanyu-ofm
       name: baifanyu-ofm/plugin
       config: {}

@@ -62,6 +62,13 @@ test('both lanes unavailable leaves the task pending without another provider', 
     api: { callUnary: async () => { calls++; } } }), { code: 'LANE_EXHAUSTED' });
   assert.equal(calls, 0);
 });
+test('selection reports host-resolved default effort and rejects a mismatched provider acknowledgement', async () => {
+  const config = readConfig(); config.dsh.reasoningEffort = 'preserve'; config.dsh.taskReasoningEfforts = {};
+  const options = { config, sessionId: 'fixture', catalog, now };
+  const route = await selectSessionRoute({ ...options, api: { callUnary: async (_method, request) => ({ result: { ok: true, value: { selected: { ...request, reasoningEffort: 'max' } } } }) } });
+  assert.equal(route.reasoningEffort, 'max');
+  await assert.rejects(selectSessionRoute({ ...options, api: { callUnary: async () => ({ result: { ok: true, value: { selected: { provider: 'wrong', model: 'wrong' } } } }) } }), { code: 'MODEL_SELECTION_MISMATCH' });
+});
 
 test('replay requires confirmed cancellation, no tool call and no external action', () => {
   const safe = { error: { status: 503 }, cancelConfirmed: true, hadToolCall: false, externalActionState: 'none' };

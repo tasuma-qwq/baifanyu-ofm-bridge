@@ -1,14 +1,16 @@
 # 完成使用者的 OFM 接入
 
-使用者把仓库交给你并要求接入时，阅读 README 和 docs/integration.md，按下列路径执行现有入口。
+使用者要求保持 DS、将大肥鱼消耗转到 OFM 时，优先调用已装载插件的 bfy_ofm_onboard 工具或 /bfy-ofm onboard；阅读 README 与 docs/deepseek-onboarding.md。不要再从旧示例现场编写客户端、静默降思考档位或增加其他模型。
 
 1. 确认正在使用的 DSH 是桌面端还是纯 web、实际端口和 DSH_HOME。复用当前应用上下文；仍缺失时只询问该项，不扫描其他 profile 的凭据。
 2. 运行 npm ci --ignore-scripts，再运行 node bin/bfy-ofm.mjs doctor。访问本机登录会话须有明确授权；已有授权时用 --use-local-session 和确切 --dsh-home，或用户已配置的 DSH_AUTH_COOKIE / DSH_LAUNCH_TOKEN，不打印密钥。
 3. 缺 OFM 时，按其官方仓库当前说明选择当前宿主的安装方式。桌面 profile 由应用插件管理器管理。涉及安装、宿主配置或登录时遵守本轮授权；仅暂停缺授权的步骤，继续其他检查，不安装来源不明的同名 npm 包。
-4. 默认运行 setup，从当前目录配置免费公开池，直接完成这条接入路径；向使用者说明共享池的限流、拥堵、地区/网络和模型变动限制，并给出 docs/public-pool-and-accounts.md 的账号配置方法。不自动加入账号、EAC 或可编辑聚合链。只有使用者要求自己的账号渠道时才用 setup --lanes，并核对其授权及权益；不编造 CN 权益日期。
-5. 用户需要原生插件时按 integration.md 安装 bundle，验证 /bfy-ofm doctor，使用 /bfy-ofm setup 与 /bfy-ofm chat。命令行入口可以独立工作，无须为了 CLI 强制安装原生插件。
+4. 默认 onboard free，仅选择可确认的 DeepSeek 公开模型并保留当前显式档位。说明免费池无门槛但不稳定，且没有账号轮换；推荐本人已有渠道，指定 onboard qoder/qodercn/trae。账号不足时说明需同渠道至少两个可用账号，不注册或导入他人账号，不把预检当成真实切换。
+5. 安装 bundle 时会带入官方 scoped OFM 依赖；已有 OFM 会复用。遵守宿主安装机制与供应链等待期；不直接改 loader/profile 文件或 minimumReleaseAgeExclude。桌面端通过应用管理器装载。
 6. 获得短模型调用授权后执行 smoke --allow-model-call。已授权明确次数时不重复询问，严格记录提交次数；预检和订阅失败尚未提交，提交回执不明则算一次可能提交。
-7. smokeMatched=true、非空正文与 completed 同时成立才报告真实接入通过。离线测试、目录读取和选模分别报告。失败按错误和 status 定位；unknown 不自动重发。
+7. 以当前会话的 DS 选择、OFM 宿主调用/账号选择回执及实际轮换观察分别验收；未满足时给原因和下一步，不把物理请求数或金额猜成事实。旧 smoke 只证明一个独立文本任务，不能替代原会话和账号池验收。unknown 不自动重发。
+
+官方兜底默认关闭。先向用户说明触发原因和会消耗官方余额/套餐/API 费用，只有明确同意后才能执行人工 fallback --confirm-official-billing。工具不提供让 Agent 自行批准费用的参数。重新 onboard 关闭兜底。
 
 交付时说明所用渠道、验证范围和下一条可使用命令，不把通过扩展为永久免费、长期稳定或完整 QQ/记忆系统已安装。
 

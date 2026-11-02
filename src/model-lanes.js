@@ -25,6 +25,7 @@ const EFFORT_STRENGTH = Object.freeze({
 export function laneEffortVocab(catalog, provider, model) {
   const group = (Array.isArray(catalog?.groups) ? catalog.groups : []).find((g) => String(g?.id) === String(provider));
   const entry = (Array.isArray(group?.models) ? group.models : []).find((m) => String(m?.id) === String(model));
+  if (entry && !entry.reasoning) return [];
   const fromCatalog = (Array.isArray(entry?.reasoning?.efforts) ? entry.reasoning.efforts : [])
     .map((e) => String(e?.id ?? '').trim()).filter(Boolean);
   if (fromCatalog.length) return fromCatalog;
@@ -36,6 +37,7 @@ export function resolveLaneEffort({ lane = null, catalog = null, globalEffort = 
   const model = String(lane?.model ?? '').trim();
   if (!provider || !model) return undefined;
   const vocab = laneEffortVocab(catalog, provider, model);
+  if (vocab?.length === 0) return undefined;
   const explicit = typeof lane?.reasoningEffort === 'string' ? lane.reasoningEffort.trim() : '';
   if (!vocab) return explicit || undefined;
   if (explicit && vocab.includes(explicit)) return explicit;

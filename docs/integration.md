@@ -1,5 +1,7 @@
 # 接入自己的 DSH
 
+本文保留 0.2.0 的低层接口与独立文本验证说明。0.3.0的默认入口、全 profile 路由守卫、原档位保持和验收判据，以 [DeepSeek 一句话接入契约](deepseek-onboarding.md) 为准。新流程使用 onboard，不能用旧 smoke 的独立新会话代替原会话验收。
+
 v0.2.0 提供原生 bundle 和完整单回合入口，要求正常运行的 DSH 及已安装的 OFM。首次配置默认使用免费公开池，不需要添加账号。公开池受限与账号配置见 public-pool-and-accounts.md。
 
 ## 原生插件

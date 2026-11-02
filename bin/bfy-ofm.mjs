@@ -6,7 +6,8 @@ import { DshClient, hostError, redact } from '../src/dsh-client.js';
 import { discoverLanes, makeConfiguration, saveConfiguration, defaultConfigFile, publicPoolLanes, PUBLIC_POOL_NOTICE, ACCOUNT_SETUP_GUIDE } from '../src/configuration.js';
 import { runOneTurn } from '../src/runner.js';
 
-const help = `白饭鱼 OFM 接入（Node.js 22.19+）
+const help = `白饭鱼 OFM 接入（Node.js 22.19+ 的 22 系，或 24+）
+  onboard --session ID [--provider free|qoder|qodercn|trae]  在原会话执行已装载插件的一句话接入
   doctor                         检查 DSH 协议和当前 OFM 候选，不调用模型
   setup                         默认配置当前目录的免费公开池
   setup --lanes provider/model   显式配置自己的账号渠道，多个候选用逗号分隔
@@ -28,11 +29,12 @@ try {
     state: { type: 'string' }, lanes: { type: 'string' }, 'cn-until': { type: 'string' },
     timeout: { type: 'string' }, 'prompt-file': { type: 'string' }, 'agent-preset': { type: 'string' },
     'use-local-session': { type: 'boolean' }, 'allow-model-call': { type: 'boolean' }, help: { type: 'boolean' }
+    ,session: { type: 'string' }, provider: { type: 'string' }
   } });
   const action = positionals[0];
   if (!action || v.help) { process.stdout.write(help + '\n'); }
   else {
-    if (positionals.length !== 1 || !['doctor', 'setup', 'smoke', 'run', 'status'].includes(action)) throw hostError('未知命令；使用 --help', 'INVALID_COMMAND');
+    if (positionals.length !== 1 || !['onboard', 'doctor', 'setup', 'smoke', 'run', 'status'].includes(action)) throw hostError('未知命令；使用 --help', 'INVALID_COMMAND');
     const configFile = path.resolve(v.config ?? defaultConfigFile(v['dsh-home']));
     const stateDir = path.resolve(v.state ?? path.join(path.dirname(configFile), 'state'));
     if (action === 'status') {
@@ -43,7 +45,13 @@ try {
       output({ scope: 'local-submission-metadata', runs });
     } else {
       const client = new DshClient({ baseUrl: v['base-url'], dshHome: v['dsh-home'], useLocalSession: v['use-local-session'] === true });
-      if (action === 'doctor') {
+      if (action === 'onboard') {
+        if (!v.session) throw hostError('onboard 需要当前会话 --session ID，或直接在 DSH 运行 /bfy-ofm onboard；不会新建会话规避公开池限速', 'SESSION_REQUIRED');
+        if (v.provider && !/^(free|qoder|qodercn|trae|trea|lobsterai|cline|loomy|raccoon|minimax|zcode|gemini)$/.test(v.provider)) throw hostError('不支持的账号渠道', 'PROVIDER_INVALID');
+        const execution = await client.rpc('commands/execute', { agentId: v.session, line: `/bfy-ofm onboard ${v.provider ?? 'free'}`, submittedAttachments: [] });
+        output(execution);
+        if (execution?.result?.kind !== 'success') process.exitCode = 2;
+      } else if (action === 'doctor') {
         const catalog = await client.catalog();
         const candidates = discoverLanes(catalog);
         output({ ok: candidates.length > 0, protocol: 'slash-rpc', eventStream: 'not-probed', baseUrl: client.baseUrl, publicPool: publicPoolLanes(catalog), candidates,

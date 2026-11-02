@@ -1,0 +1,10 @@
+docs/one-line-onboarding.md
+docs/private/
+state/
+logs/
+node_modules/
+.env*
+.npmrc
+config.local.json
+*.log
+*.tgz

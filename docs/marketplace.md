@@ -1,47 +1,27 @@
-# DSH 插件市场收录核查
+# 插件市场同步状态
 
-核查日期：2026-10-31（Asia/Tokyo）。实际申请前重新核对规则。
+核对日期：2026-11-03（Asia/Tokyo）。
 
-## 已提交的申请
+## 当前发布与同步
 
-- [社区注册表 PR #10790](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/10790)：新增一份 model 分类条目，申请和审核状态以 PR 为准。
-- [DSH Plugin Hub 收录申请 #552](https://github.com/dshplugin/dsh-plugin-hub/issues/552)：维护者已回复按定期扫描自动拾取，应用内插件中心要求 npm 分发。项目使用 npm 包名 `baifanyu-ofm`，GitHub 仓库地址保留 `tasuma-qwq/baifanyu-ofm-bridge`。
-- 仓库已添加 dsh-plugin、deepseek-harness、ofm、model-routing Topics，供各社区目录后续发现。
+- **npm / GitHub：0.3.1 已发布。** 已验证官方 registry 的 latest、匿名下载完整性及独立目录安装。入口：[npm 0.3.1](https://www.npmjs.com/package/baifanyu-ofm/v/0.3.1)、[GitHub Release](https://github.com/tasuma-qwq/baifanyu-ofm-bridge/releases/tag/v0.3.1)。
+- **主市场：项目已收录。** 原收录 [PR #10790](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/10790) 已合并。核查时 [公开索引](https://awesome-dsh-plugin.com/plugins.json) 仍显示 0.2.0 和旧简介，不能把 npm 发布成功写成市场已经刷新。
+- **新版简介更新已提交：[PR #11549](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/11549)。** 只修改 data/plugins/tasuma-qwq__baifanyu-ofm-bridge.yml 的描述，说明 Web / qq-bridge、默认免费池、官方依赖装载、自有账号及保留手动选模；不改生成的 README 或其他插件。
+- **Hub 申请已更新：[Issue #552](https://github.com/dshplugin/dsh-plugin-hub/issues/552)。** 安装命令、使用入口、兼容条件、CI 与验证说明均更新到 0.3.1，保留原有已完成状态，不重复创建申请。
+- **仓库公开简介已更新。** 为自动读取 GitHub metadata 的市场提供当前功能描述。
 
-申请已发送不等于已收录。注册表的年龄检查若暂未达标，其 [regate 工作流](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/blob/main/.github/workflows/regate.yml)会在后续定期扫描中重新评估；不需要反复开 PR 或推送空提交。
+## 版本与简介怎样更新
 
-## npm 安装与仓库映射
+主市场的 YAML 条目只维护仓库、分类及简介等字段。根据其 [贡献指南](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/blob/main/contributing.md)，npm 包映射从 registry 自动采集，条目不能手写 npm 字段；版本也应由市场生成。npm package.json 的 repository 已指向本仓库。
+
+因此两条链路分别是：简介通过更新 PR 合并，版本通过市场正常扫描和站点构建刷新。PR 提交、CI 通过、维护者合并和站点可见是不同阶段；没有维护权限时不能强制更新对方主分支或部署。
+
+## 当前安装
 
 ```sh
-dsh plugin --profile web add baifanyu-ofm
+dsh plugin --profile web add baifanyu-ofm@0.3.1
 ```
 
-npm 包的 repository 字段指回本仓库，供市场将 npm 分发与已提交的仓库条目关联。版本和可下载状态以 [npm 包页面](https://www.npmjs.com/package/baifanyu-ofm)为准；npm 发布不等于市场扫描已完成。原生 bundle 加载 `baifanyu-ofm/plugin`。
+安装到 qq-bridge 实际连接的 DSH Web profile。桌面端使用应用插件管理器。遵守宿主供应链等待期及正常安装机制。
 
-2026-11-01 已正式发布 `baifanyu-ofm@0.2.0`，公开 registry 的 latest 指向 0.2.0。已验证匿名下载、安装包完整性及独立 DSH_HOME 中按包名安装；上述 PR 和 Issue 的正文已补充 npm 安装命令和包页面。等待各市场后续扫描或审核，不将 npm 发布成功表述为所有市场已上架。
-
-v0.2.0 有 dsh.bundle、cordis.patch.yml 与实际 /bfy-ofm 命令，可按 model 分类准备申请。功能是确认后的渠道策略、任务档位、冷却与接入验证，不提供模型源、账号或完整 QQ bot。
-
-## 应用内市场的社区注册表
-
-[awesome-dsh-plugin/awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin) 的[贡献指南](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/blob/main/contributing.md)要求：公开且活跃的真实可用代码、dsh.bundle manifest、仓库创建满一天、dsh-plugin topic。PR 只新增 data/plugins/<owner>__<repo>.yml；README 自动生成。自动检查通过后仍有人工审核，描述必须与实际功能一致。
-
-仓库创建于 2026-10-30 04:25:12 UTC，满一天是 **2026-10-31 13:25:12（日本时间）/ 12:25:12（北京时间）**。核查时尚未满一天。
-
-可使用的申请条目：
-
-```yaml
-url: https://github.com/tasuma-qwq/baifanyu-ofm-bridge
-name: tasuma-qwq/baifanyu-ofm-bridge
-category: model
-description:
-  en: 'Adds OFM lane and effort selection, with public-pool setup, cooldown tracking, and a local DSH connection check.'
-  zh: '提供 OFM 渠道与档位选择、免费公开池配置、冷却记录和本机 DSH 接入验证。'
-```
-
-## 其他发现入口
-
-- [DSH Marketplace](https://dshmarketplace.dev/submit) 是独立项目，说明 dsh-plugin topic 可触发后续同步；投稿与精选另有流程，不隶属 DeepSeek。
-- [DSH Plugin Hub](https://github.com/dshplugin/dsh-plugin-hub) 是另一社区市场，指向 [dsh-plugin.org 提交页](https://dsh-plugin.org/zh/submit)，也说明用 dsh-plugin topic 发现。
-
-一个目录收录不代表其他市场已经审核；自动发现、申请开放、测试通过与 npm 可下载分别核对，不将其中任何一项表述为市场审核通过。
+免费池只是默认入口；0.3.1 已移除全局模型拦截和创建/恢复聊天时的自动改选。用户手动或桥接选择的模型正常生效。

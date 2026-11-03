@@ -8,7 +8,7 @@
       "source": "src/model-lanes.js",
       "sha256": "504a13945d3d695560c34cde58dcf24eb6460fcad3bfa52273cec11c09402110",
       "public": "src/model-lanes.js",
-      "changes": "Comment-only cleanup"
+      "changes": "Initial comment cleanup; later effort vocabulary fixes and removal of the static official-provider ban in 0.3.1. Original snapshot hash retained."
     },
     {
       "source": "src/turn-stall-guard.js",

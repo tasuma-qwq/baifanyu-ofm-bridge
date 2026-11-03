@@ -1,19 +1,17 @@
 import path from 'node:path';
 import { defaultConfigFile } from './configuration.js';
 import { DshClient } from './dsh-client.js';
-import { createPolicyStore, configuredRoute, onboard, streamGuard, rotationReadiness, officialFallback, fail, NOTICES, OFM_PROVIDERS, observeAccountPool, noteFailure, isDeepSeek, failureNext } from './onboarding.js';
+import { createPolicyStore, configuredRoute, onboard, observeStream, rotationReadiness, officialFallback, fail, NOTICES, OFM_PROVIDERS, observeAccountPool, noteFailure, isDeepSeek, failureNext } from './onboarding.js';
 
 export const name = 'baifanyu-ofm';
 export const inject = ['commands', 'sessionController', 'llm'];
 export function apply(ctx, options = {}) {
   const profile = ctx.get?.('profileContext')?.name ?? 'unscoped';
-  if (!options.policyFile && !/^[A-Za-z0-9_-]+$/.test(profile)) throw fail('PROFILE_NAME_UNSUPPORTED', 'profile 名称不受支持，未启用守卫', '显式指定独立 policyFile 路径后重试。');
+  if (!options.policyFile && !/^[A-Za-z0-9_-]+$/.test(profile)) throw fail('PROFILE_NAME_UNSUPPORTED', 'profile 名称不受支持，无法保存接入记录', '显式指定独立 policyFile 路径后重试。');
   const file = options.policyFile ?? path.join(path.dirname(options.configFile ?? defaultConfigFile()), 'profiles', profile, 'onboarding-policy.json');
   const store = createPolicyStore(file);
-  // Middleware covers conversation requests AND auxiliary LLM consumers such
-  // as automatic titles. It rejects before adapter streaming, never rewrites
-  // a model mid-stream and never replays an uncertain turn.
-  ctx.on('llm/stream', streamGuard(store), { prepend: true });
+  // Observation never restricts or rewrites a user's or bridge's model choice.
+  ctx.on('llm/stream', observeStream(store, { onError: () => ctx.logger?.warn?.('baifanyu-ofm: observation unavailable; model dispatch continues') }), { prepend: true });
   ctx.inject(['accountPool'], scoped => scoped.effect(() => observeAccountPool(scoped.accountPool)));
   const pool = () => ctx.get?.('accountPool');
   async function ensureOfmEnabled() {
@@ -41,39 +39,16 @@ export function apply(ctx, options = {}) {
   }
   const currentSelection = (agent, catalog) => ctx.sessionController.agents?.selectionFor?.(agent)?.current
     ?? agent?.model?.current ?? agent?.session?.requestHeader?.()?.config ?? catalog.default ?? {};
-  async function configure(agent, provider, automatic = false) {
+  async function configure(agent, provider) {
     let ofm;
     try { ofm = await ensureOfmEnabled(); }
     catch (error) { noteFailure(store, error, agent.id); throw error; }
     if (provider !== 'free' && ofm.channels && ofm.channels !== 'ready') throw fail('OFM_CHANNELS_NOT_READY', 'OFM 账号渠道包尚未就绪；不能据此判断账号未登录', '等待渠道包就绪并检查 OFM 日志，然后重试。');
     const catalog = await ctx.sessionController.modelCatalog();
     const current = currentSelection(agent, catalog);
-    return onboard({ catalog, current, provider, store, pool: pool(), sessionId: agent.id, makeDefault: !automatic,
-      select: async route => {
-        if (automatic) {
-          // 0.2.1 uses the Session Controller's existing model-selection owner.
-          // Newer kernels may expose that operation on the Agent itself. Avoid
-          // resolveAgent during the awaited agent/created event (self-deadlock).
-          if (typeof agent.model?.select === 'function') { await agent.model.select(route); return { selected: route }; }
-          const controller = ctx.sessionController.agents;
-          if (typeof controller?.selectForNextRequest !== 'function') throw fail('HOST_AUTO_SELECTION_UNSUPPORTED', '宿主不支持安全的创建期选模', '使用 /bfy-ofm onboard 显式完成选模。');
-          controller.selectForNextRequest(agent, route);
-          return { selected: route };
-        }
-        return ctx.sessionController.selectModel({ sessionId: agent.id, ...route });
-      } });
+    return onboard({ catalog, current, provider, store, pool: pool(), sessionId: agent.id,
+      select: route => ctx.sessionController.selectModel({ sessionId: agent.id, ...route }) });
   }
-  ctx.on('agent/created', async ({ agent }) => {
-    try {
-      const state = store.read();
-      if (state.fallback?.active && state.fallback.sessionId === agent.id) return;
-      await configure(agent, state.sessionRoutes?.[agent.id]?.provider ?? state.provider ?? 'free', true);
-    } catch (error) {
-      // Do not make directory/network failure look like a successful switch.
-      // The stream guard remains closed; human slash commands still work.
-      ctx.logger?.warn?.(`baifanyu-ofm: ${error.code ?? 'ONBOARD_REQUIRED'}; run /bfy-ofm onboard`);
-    }
-  });
   async function status(agent) {
     const state = store.read();
     const route = configuredRoute(state, agent.id);

@@ -3,7 +3,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-export const FORBIDDEN_PROVIDERS = Object.freeze(['deepseek-official', 'deepseek-account']);
+// Compatibility export: selection is controlled by the caller's explicit configuration.
+export const FORBIDDEN_PROVIDERS = Object.freeze([]);
 
 export const DEFAULT_ALLOWED_PROVIDERS = Object.freeze(['qodercn', 'trae']);
 
@@ -87,7 +88,6 @@ export function resolveLaneChain(dsh = {}, now = Date.now()) {
     const provider = String(lane.provider).trim();
     const model = String(lane.model).trim();
     const key = `${provider}/${model}`;
-    if (FORBIDDEN_PROVIDERS.includes(provider)) continue;
     if (!allowed.includes(provider)) continue;
     if (Array.isArray(dsh.allowedLanes) && !dsh.allowedLanes.includes(key)) continue;
     const freeUntil = Date.parse(String(dsh.qoderCnFreeUntil ?? ''));

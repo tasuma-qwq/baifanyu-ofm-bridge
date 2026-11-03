@@ -73,14 +73,14 @@ function tempFile(t, name = 'model-lanes.json') {
   return path.join(dir, name);
 }
 
-test('官方 API 与官方账号车道在代码级禁用，改 config 也拉不回来', (t) => {
-  const chain = resolveLaneChain({ provider: 'deepseek-official', model: 'deepseek-flash' });
-  assert.ok(chain.length > 0, '车道链不允许为空');
-  for (const lane of chain) assert.ok(!FORBIDDEN_PROVIDERS.includes(lane.provider), `混入了禁用车道 ${laneKey(lane)}`);
-  assert.equal(laneKey(chain[0]), 'qodercn/dfmodel', '默认车道是 Qoder CN 的 DeepSeek-Flash');
-  const explicit = resolveLaneChain({ laneChain: [{ provider: 'deepseek-account', model: 'deepseek-flash' }, { provider: 'trae', model: 'deepseek-v4.1-flash' }] });
-  assert.equal(laneKey(explicit[0]), 'trae/deepseek-v4.1-flash');
-  assert.ok(!explicit.some((l) => l.provider === 'deepseek-account'));
+test('official providers stay outside defaults but explicit caller configuration can select them', () => {
+  assert.deepEqual(FORBIDDEN_PROVIDERS, []);
+  const defaults = resolveLaneChain({});
+  assert.ok(!defaults.some(l => /^deepseek-/.test(l.provider)));
+  for (const provider of ['deepseek-official', 'deepseek-account']) {
+    assert.deepEqual(resolveLaneChain({ allowedProviders: [provider], includeDefaultLanes: false,
+      laneChain: [{ provider, model: 'deepseek-flash' }] }), [{ provider, model: 'deepseek-flash' }]);
+  }
 });
 
 test('默认只允许 qodercn / trae：国际版 Qoder 与免费车道都不进链', () => {

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { createPolicyStore, chooseDeepSeek, onboard, streamGuard, rotationReadiness, officialFallback, observeAccountPool, assertRoute, noteFailure } from '../src/onboarding.js';
+import { createPolicyStore, chooseDeepSeek, onboard, observeStream, rotationReadiness, officialFallback, observeAccountPool, noteFailure } from '../src/onboarding.js';
 import { apply } from '../src/plugin.js';
 import { resolveLaneEffort } from '../src/model-lanes.js';
 
@@ -53,18 +53,34 @@ test('OFM account-pool exclusion selects a distinct backup without leaking ident
   const single = { getAvailableAccount: async (_p, _m, excluded) => excluded.size ? null : account('one') };
   assert.equal((await rotationReadiness(single, { provider: 'qodercn', model: 'dfmodel' })).reason, 'SECOND_USABLE_ACCOUNT_REQUIRED');
 });
-test('guard blocks official and non-DS dispatch before the adapter, including auxiliary callers', async t => {
+test('observation permits manual official, non-DS, account and combo models unchanged', async t => {
   const s = store(t).value; s.update({ route });
-  const guard = streamGuard(s); let dispatched = 0;
-  const next = async () => { dispatched++; return (async function* () {})(); };
-  for (const request of [{ provider: 'deepseek-official', model: 'deepseek-flash' }, { provider: 'our-free-model', model: 'glm-fixture-free' }, { provider: 'our-free-model', model: 'combo:recommended-free' }]) {
-    await assert.rejects(async () => { for await (const _ of guard({ ...request, source: { kind: 'session-title' } }, next)) {} }, { code: 'OFM_ROUTE_BLOCKED' });
+  let dispatched = 0;
+  for (const request of [{ provider: 'deepseek-official', model: 'deepseek-flash' },
+    { provider: 'qodercn', model: 'dfmodel' }, { provider: 'our-free-model', model: 'glm-fixture-free' },
+    { provider: 'our-free-model', model: 'combo:recommended-free' }, { provider: 'custom', model: 'other' }]) {
+    const expected = { type: 'finish', reason: { kind: 'stop' } };
+    const chunks = [];
+    for await (const chunk of observeStream(s)(request, async () => {
+      dispatched++; return (async function* () { yield expected; })();
+    })) chunks.push(chunk);
+    assert.equal(chunks[0], expected);
   }
-  assert.equal(dispatched, 0);
+  assert.equal(dispatched, 5);
+  assert.deepEqual(s.read().route, route);
+});
+
+test('unreadable or unwritable observation state never blocks model dispatch', async () => {
+  let dispatched = 0; let warnings = 0;
+  const broken = { read() { throw new Error('bad state'); }, update() { throw new Error('disk full'); } };
+  for await (const _ of observeStream(broken, { onError: () => warnings++ })({ provider: 'custom', model: 'manual' }, async () => {
+    dispatched++; return (async function* () { yield { type: 'finish', reason: { kind: 'stop' } }; })();
+  })) {}
+  assert.equal(dispatched, 1); assert.ok(warnings > 0);
 });
 test('receipt confirms host routing only, not physical request count or actual charges', async t => {
   const { value: s, dir } = store(t); s.update({ route });
-  const stream = await streamGuard(s)(route, async () => (async function* () {
+  const stream = await observeStream(s)(route, async () => (async function* () {
     yield { type: 'text-delta', text: 'private-response-sentinel' };
     yield { type: 'finish', reason: { kind: 'stop' } };
   })());
@@ -87,7 +103,7 @@ test('official fallback needs explicit confirmation and a recent unrecovered OFM
 });
 test('host sessionId receipts do not reuse another conversation or a title call as evidence', async t => {
   const s = store(t).value; s.update({ route });
-  const run = async request => { for await (const _ of streamGuard(s)(request, async () => (async function* () { yield { type: 'finish', reason: { kind: 'stop' } }; })())) {} };
+  const run = async request => { for await (const _ of observeStream(s)(request, async () => (async function* () { yield { type: 'finish', reason: { kind: 'stop' } }; })())) {} };
   await run({ ...route, sessionId: 'original-session' });
   await run({ ...route }); // an auxiliary caller with no session
   assert.equal(s.read().receipts['original-session'].outcome, 'completed');
@@ -98,7 +114,7 @@ test('models explicitly declaring no reasoning never receive guessed effort', ()
   const lane = { provider: 'trae', model: 'DeepSeek-V4-Flash', reasoningEffort: 'max' };
   assert.equal(resolveLaneEffort({ lane, catalog: catalog(), globalEffort: 'max' }), undefined);
 });
-test('native plugin exposes one-sentence tool, uses safe creation-time selection and refuses forged fallback', async t => {
+test('native plugin exposes explicit onboarding without overriding new or resumed sessions', async t => {
   const dir = store(t).dir; const events = new Map(); let command, tool; const selected = [];
   const ctx = { logger: { warn() {} }, on: (name, handler) => events.set(name, handler), get: () => undefined,
     commands: { register: value => { command = value; } },
@@ -108,15 +124,15 @@ test('native plugin exposes one-sentence tool, uses safe creation-time selection
   apply(ctx, { policyFile: path.join(dir, 'native-policy.json'), ofmControl: async () => ({ enabled: true }) });
   assert.equal(tool.name, 'bfy_ofm_onboard');
   const agent = { id: 'current-existing-session', session: { requestHeader: () => undefined } };
-  await events.get('agent/created')({ agent });
-  assert.equal(selected[0].model, ds.id); assert.equal(selected[0].reasoningEffort, 'max');
+  assert.equal(events.has('agent/created'), false);
+  assert.equal(selected.length, 0);
   const result = await tool.execute({ provider: 'free' }, { agent });
   assert.equal(result.ofmRoutingConfirmed, false);
   assert.equal(selected.at(-1).sessionId, agent.id);
   const rejected = await command.handler({ agent, rawInput: 'fallback', signal: new AbortController().signal });
   assert.equal(rejected.kind, 'error'); assert.match(rejected.text, /OFFICIAL_CONFIRMATION_REQUIRED/);
 });
-test('rotation observation uses only actual guarded selector calls and never saves account identities', async t => {
+test('rotation observation uses only actual observed selector calls and never saves account identities', async t => {
   const { value: s, dir } = store(t);
   const accountRoute = { provider: 'qodercn', model: 'dfmodel', reasoningEffort: 'max' };
   s.update({ route: accountRoute });
@@ -125,7 +141,7 @@ test('rotation observation uses only actual guarded selector calls and never sav
   const cleanup = observeAccountPool(pool);
   await rotationReadiness(pool, accountRoute); // preflight is NOT live rotation evidence
   assert.equal(s.read().receipt, null);
-  const chunks = streamGuard(s)({ ...accountRoute, sessionId: 'same-session' }, async () => (async function* () {
+  const chunks = observeStream(s)({ ...accountRoute, sessionId: 'same-session' }, async () => (async function* () {
     const first = await pool.getAvailableAccount('qodercn', 'dfmodel', new Set());
     await pool.getAvailableAccount('qodercn', 'dfmodel', new Set([first.entry.id]));
     yield { type: 'finish', reason: { kind: 'stop' } };
@@ -145,13 +161,11 @@ test('a session-specific failure and consent cannot authorize official charges f
   noteFailure(s, { code: 'QUOTA_EXCEEDED' }, 'failing-session');
   assert.throws(() => officialFallback(catalog(), s, true, 'healthy-session'), { code: 'FALLBACK_TRIGGER_MISSING' });
   const official = officialFallback(catalog(), s, true, 'failing-session');
-  s.update({ fallback: { active: true, sessionId: 'failing-session', confirmedAt: Date.now(), route: official } });
-  assert.equal(assertRoute(s.read(), { ...official, sessionId: 'failing-session' }), 'official-explicit-fallback');
-  for (const sessionId of ['healthy-session', undefined]) assert.throws(() => assertRoute(s.read(), { ...official, sessionId }), { code: 'OFM_ROUTE_BLOCKED' });
+  assert.equal(official.provider, 'deepseek-official');
 });
 test('stream exceptions replace stale success with failed evidence and preserve upstream failure scope', async t => {
   const s = store(t).value; s.update({ route });
-  const guard = streamGuard(s);
+  const guard = observeStream(s);
   await assert.rejects(async () => {
     for await (const _ of guard({ ...route, sessionId: 'one-session' }, async () => (async function* () { throw Object.assign(new Error('private-upstream-message'), { code: 'TIMEOUT' }); })())) {}
   });
@@ -162,7 +176,7 @@ test('stream exceptions replace stale success with failed evidence and preserve 
 });
 test('closing a stream early records unknown rather than a successful model response', async t => {
   const s = store(t).value; s.update({ route });
-  const stream = streamGuard(s)({ ...route, sessionId: 'cancelled' }, async () => (async function* () {
+  const stream = observeStream(s)({ ...route, sessionId: 'cancelled' }, async () => (async function* () {
     yield { type: 'text-delta', text: 'partial' };
     yield { type: 'finish', reason: { kind: 'stop' } };
   })());
@@ -186,7 +200,7 @@ test('status does not reuse an old OFM receipt after the user changes the actual
   assert.notEqual(result.status, 'complete');
 });
 
-test('two sessions retain independent OFM routes when onboarding and restoring either conversation', async t => {
+test('session receipts remain independent without enforcing their saved routes', async t => {
   const dir = store(t).dir;
   const file = path.join(dir, 'policy.json');
   const events = new Map(); const selections = new Map(); let command;
@@ -215,13 +229,11 @@ test('two sessions retain independent OFM routes when onboarding and restoring e
     assert.equal(result.configuredOfmRoute.provider, provider);
     assert.equal(result.ofmRoutingConfirmed, true);
   }
-  await assert.rejects(async () => {
-    for await (const _ of events.get('llm/stream')({ ...selections.get(account.id), sessionId: free.id }, async () => {
-      throw new Error('must not dispatch a different session route');
-    })) {}
-  }, { code: 'OFM_ROUTE_BLOCKED' });
-  await events.get('agent/created')({ agent: free });
+  // A bridge may select another OFM route after onboarding; observation accepts it.
+  for await (const _ of events.get('llm/stream')({ ...selections.get(account.id), sessionId: free.id }, async () => (async function* () {
+    yield { type: 'finish', reason: { kind: 'stop' } };
+  })())) {}
+  assert.equal(events.has('agent/created'), false);
   assert.equal(selections.get(free.id).provider, 'our-free-model');
-  assert.equal(createPolicyStore(file).read().provider, 'qodercn');
   await run(free); await run(account);
 });

@@ -1,4 +1,4 @@
-// DeepSeek-only onboarding policy. OFM owns credentials, account rotation,
+// Default DeepSeek onboarding and passive receipts. OFM owns account rotation,
 // recovery and cooldowns; this layer does not replay or schedule accounts.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -90,7 +90,7 @@ export function createPolicyStore(file) {
       if (value.schema !== 3) throw new Error('schema');
       return value;
     } catch (error) {
-      if (error.code !== 'ENOENT') throw fail('POLICY_UNREADABLE', '接入策略不可读，已停止供模；原文件保留', '检查并恢复策略文件后重新 onboard。');
+      if (error.code !== 'ENOENT') throw fail('POLICY_UNREADABLE', '接入记录不可读；原文件保留，模型调用不受限制', '检查并恢复策略文件后重新 onboard。');
       return { schema: 3, provider: 'free', route: null, fallback: { active: false }, receipt: null, failure: null };
     }
   }
@@ -106,18 +106,6 @@ export function createPolicyStore(file) {
 }
 export function configuredRoute(policy, sessionId) {
   return policy.sessionRoutes?.[sessionId]?.route ?? policy.route;
-}
-export function assertRoute(policy, request) {
-  const fallback = policy.fallback;
-  const sessionId = request.sessionId ?? request.conversationId;
-  const route = configuredRoute(policy, sessionId);
-  if (fallback?.active === true && fallback.sessionId && fallback.sessionId === sessionId && fallback.confirmedAt && OFFICIAL_PROVIDERS.includes(request.provider) && isDeepSeek(request.provider, request.model)
-    && fallback.route?.provider === request.provider && fallback.route.model === request.model) return 'official-explicit-fallback';
-  if (!route || !OFM_PROVIDERS.includes(request.provider) || !isDeepSeek(request.provider, request.model)
-    || request.provider !== route.provider || request.model !== route.model) {
-    throw fail('OFM_ROUTE_BLOCKED', '本配置只允许已确认的 OFM DeepSeek 路由，已拦截官方或其他模型调用', '运行 /bfy-ofm onboard；官方兜底必须由你明确确认。');
-  }
-  return 'ofm';
 }
 export async function rotationReadiness(pool, route) {
   if (route.provider === 'our-free-model' || route.provider === 'our-free-model-region') {
@@ -158,7 +146,7 @@ export async function onboard({ catalog, current, provider = 'free', select, sto
     if (rotationObserved) rotation.reason = 'OFM_ACCOUNT_ROTATION_OBSERVED';
     const lastFailure = sessionId ? state.failures?.[sessionId] : state.failure;
     return { status: routed && rotation.available && rotationObserved ? 'complete' : 'needs-verification-or-action', notices: NOTICES, lastFailure: lastFailure ?? null,
-      route, modelConfirmed: true, ofmRoutingConfirmed: routed, ofmAccountPoolConfirmed: Boolean(routed && receipt?.accountPoolObserved), officialCallsAllowed: false, rotation,
+      route, modelConfirmed: true, ofmRoutingConfirmed: routed, ofmAccountPoolConfirmed: Boolean(routed && receipt?.accountPoolObserved), automaticOfficialFallback: false, modelRestrictions: false, rotation,
       usageScope: '宿主路由与 OFM 账号选择；上游物理请求与实际扣费以 OFM/账号账本为准。',
       next: failureNext(lastFailure) ?? (!routed ? '在当前会话发送一次已授权的普通消息，再运行 /bfy-ofm status 核对实际 OFM DeepSeek 调用。'
         : rotation.available && !rotationObserved ? '账号池能选择备用，但尚无当前会话的真实轮换证据；OFM 发生切换后再查 status，不人为耗尽配额。' : rotation.next) };
@@ -169,23 +157,25 @@ export async function onboard({ catalog, current, provider = 'free', select, sto
     throw error;
   }
 }
-export function streamGuard(store) {
+export function observeStream(store, { onError = () => {} } = {}) {
   return (request, next) => (async function* () {
-      const lane = assertRoute(store.read(), request);
+      const lane = OFM_PROVIDERS.includes(request.provider) ? 'ofm' : OFFICIAL_PROVIDERS.includes(request.provider) ? 'official' : 'other';
       const trace = { provider: request.provider, model: request.model, accounts: new Set() };
       function record(outcome, failure) {
-        const row = { provider: request.provider, model: request.model, lane, at: Date.now(), outcome, physicalRequests: 'unknown',
-          accountPoolObserved: trace.accounts.size > 0, distinctAccounts: trace.accounts.size, rotationObserved: trace.accounts.size > 1 };
-        const state = store.read();
-        const receipts = { ...state.receipts };
-        const failures = { ...state.failures };
-        const sessionId = request.sessionId ?? request.conversationId;
-        if (typeof sessionId === 'string') receipts[sessionId] = row;
-        if (failure && lane === 'ofm' && sessionId) failures[sessionId] = { code: String(failure.code ?? 'OFM_REQUEST_FAILED'), status: Number(failure.status) || 0, at: row.at };
-        else if (outcome === 'completed' && lane === 'ofm' && sessionId) delete failures[sessionId];
-        store.update({ receipt: row, receipts: Object.fromEntries(Object.entries(receipts).slice(-20)),
-          failures: Object.fromEntries(Object.entries(failures).slice(-20)),
-          ...(failure && lane === 'ofm' ? { failure: { code: String(failure.code ?? 'OFM_REQUEST_FAILED'), status: Number(failure.status) || 0, at: row.at } } : {}) });
+        try {
+          const row = { provider: request.provider, model: request.model, lane, at: Date.now(), outcome, physicalRequests: 'unknown',
+            accountPoolObserved: trace.accounts.size > 0, distinctAccounts: trace.accounts.size, rotationObserved: trace.accounts.size > 1 };
+          const state = store.read();
+          const receipts = { ...state.receipts };
+          const failures = { ...state.failures };
+          const sessionId = request.sessionId ?? request.conversationId;
+          if (typeof sessionId === 'string') receipts[sessionId] = row;
+          if (failure && lane === 'ofm' && sessionId) failures[sessionId] = { code: String(failure.code ?? 'OFM_REQUEST_FAILED'), status: Number(failure.status) || 0, at: row.at };
+          else if (outcome === 'completed' && lane === 'ofm' && sessionId) delete failures[sessionId];
+          store.update({ receipt: row, receipts: Object.fromEntries(Object.entries(receipts).slice(-20)),
+            failures: Object.fromEntries(Object.entries(failures).slice(-20)),
+            ...(failure && lane === 'ofm' ? { failure: { code: String(failure.code ?? 'OFM_REQUEST_FAILED'), status: Number(failure.status) || 0, at: row.at } } : {}) });
+        } catch { try { onError(); } catch {} }
       }
       let finished = false;
       record('pending');

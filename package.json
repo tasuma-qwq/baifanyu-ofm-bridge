@@ -1,7 +1,7 @@
 {
   "name": "baifanyu-ofm",
-  "version": "0.3.0",
-  "description": "白饭鱼 OFM：DeepSeek 一句话接入、原思考档位保持、账号轮换验收与官方费用守卫",
+  "version": "0.3.1",
+  "description": "白饭鱼 OFM：DeepSeek 一句话接入、原思考档位保持与账号轮换回执，不限制手动选模",
   "type": "module",
   "license": "MIT",
   "publishConfig": { "access": "public", "registry": "https://registry.npmjs.org/" },

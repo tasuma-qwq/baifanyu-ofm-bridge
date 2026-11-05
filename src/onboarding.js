@@ -1,16 +1,53 @@
 // Default DeepSeek onboarding and passive receipts. OFM owns account rotation,
 // recovery and cooldowns; this layer does not replay or schedule accounts.
 import fs from 'node:fs';
+import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { AsyncLocalStorage } from 'node:async_hooks';
 
 const requestTrace = new AsyncLocalStorage();
+// Host services are awaited without their own deadlines, so every call the
+// plugin makes on behalf of a turn gets a local ceiling: a stalled host call
+// must end as an error the user can read, never as a turn that never returns.
+export const DEFAULT_HOST_TIMEOUT_MS = 15000;
+const POOL_OBSERVER = Symbol.for('baifanyu-ofm.account-pool-observer');
+export function guard(operation, { signal, timeoutMs = DEFAULT_HOST_TIMEOUT_MS, label = '宿主调用' } = {}) {
+  const started = Promise.resolve().then(() => operation());
+  // The host keeps working on its own promise after we stop waiting for it.
+  started.catch(() => {});
+  let onAbort;
+  let timer;
+  const stopped = new Promise((_resolve, reject) => {
+    timer = setTimeout(() => reject(fail('HOST_CALL_STALLED',
+      `宿主在 ${Math.round(timeoutMs / 1000)} 秒内没有完成${label}，本插件已停止等待`,
+      '未确认的调用不能当作已完成；先检查 DSH 与 OFM 是否仍在处理，再用 status 核对实际状态，不重复提交。')), timeoutMs);
+    if (signal?.aborted) reject(cancelled(signal, label));
+    else if (signal) {
+      onAbort = () => reject(cancelled(signal, label));
+      signal.addEventListener('abort', onAbort, { once: true });
+    }
+  });
+  return Promise.race([started, stopped]).finally(() => {
+    clearTimeout(timer);
+    if (signal && onAbort) signal.removeEventListener('abort', onAbort);
+  });
+}
+const cancelled = (signal, label) => fail('HOST_CALL_CANCELLED',
+  signal?.reason?.name === 'TimeoutError' ? `宿主侧超时，${label}未完成，本插件停止等待` : `${label}已被取消，本插件停止等待`,
+  '被取消的调用结果未知；用 status 查看已确认到的状态，不自动重发。');
 // Observe OFM's existing selector, without changing order, exclusions,
 // credentials, return values or retries. Identities live only in this request's
 // in-memory Set; receipts contain counts and a rotation boolean, never ids.
 export function observeAccountPool(pool) {
   if (typeof pool?.getAvailableAccount !== 'function') return () => {};
+  const shared = pool.getAvailableAccount[POOL_OBSERVER];
+  // A second fiber must not wrap our own wrapper: chained wrappers grow on every
+  // re-mount and only the innermost one is restored on dispose.
+  if (shared) {
+    shared.holders += 1;
+    return () => { shared.holders -= 1; if (shared.holders <= 0) shared.restore(); };
+  }
   const original = pool.getAvailableAccount;
   const wrapped = async function (...args) {
     const value = await original.apply(this, args);
@@ -18,12 +55,18 @@ export function observeAccountPool(pool) {
     if (trace && args[0] === trace.provider && args[1] === trace.model && value?.entry?.id) trace.accounts.add(String(value.entry.id));
     return value;
   };
+  const state = { holders: 1, restore: () => { if (pool.getAvailableAccount === wrapped) pool.getAvailableAccount = original; } };
+  Object.defineProperty(wrapped, POOL_OBSERVER, { value: state, enumerable: false });
   pool.getAvailableAccount = wrapped;
-  return () => { if (pool.getAvailableAccount === wrapped) pool.getAvailableAccount = original; };
+  return () => { state.holders -= 1; if (state.holders <= 0) state.restore(); };
 }
 
+
 export const ACCOUNT_PROVIDERS = Object.freeze(['qoder', 'qodercn', 'trae', 'lobsterai', 'cline', 'loomy', 'raccoon', 'minimax', 'zcode', 'gemini']);
-export const OFM_PROVIDERS = Object.freeze(['our-free-model', 'our-free-model-region', ...ACCOUNT_PROVIDERS]);
+// The two adapter routes OFM itself registers; presence of either means a live
+// OFM instance owns the model pool, so no second copy may be mounted.
+export const OFM_ROUTE_PROVIDERS = Object.freeze(['our-free-model', 'our-free-model-region']);
+export const OFM_PROVIDERS = Object.freeze([...OFM_ROUTE_PROVIDERS, ...ACCOUNT_PROVIDERS]);
 export const OFFICIAL_PROVIDERS = Object.freeze(['deepseek-official', 'deepseek-account']);
 export const NOTICES = Object.freeze([
   '免费公开池无账号门槛，但可能限流、拥堵或受地区网络影响。公开池没有可轮换的账号。',
@@ -83,45 +126,84 @@ export function chooseDeepSeek(catalog, provider, current) {
   }
   throw effortError;
 }
-export function createPolicyStore(file) {
-  function read() {
+export function createPolicyStore(file, { onWriteError = () => {} } = {}) {
+  // Observation runs inside every model call, so persistence must never sit on
+  // the event loop: the policy is cached in memory and written asynchronously,
+  // one in-flight write plus a coalesced follow-up. Explicit flush() is offered
+  // to the command paths that need the file to be on disk before returning.
+  let cache;
+  let inFlight;
+  let overdue = false;
+  let writeError;
+  function load() {
     try {
       const value = JSON.parse(fs.readFileSync(file, 'utf8'));
       if (value.schema !== 3) throw new Error('schema');
-      return value;
+      cache = value;
     } catch (error) {
       if (error.code !== 'ENOENT') throw fail('POLICY_UNREADABLE', '接入记录不可读；原文件保留，模型调用不受限制', '检查并恢复策略文件后重新 onboard。');
-      return { schema: 3, provider: 'free', route: null, fallback: { active: false }, receipt: null, failure: null };
+      cache = { schema: 3, provider: 'free', route: null, fallback: { active: false }, receipt: null, failure: null };
     }
+    return cache;
   }
+  function persist() {
+    if (inFlight) {
+      overdue = true;
+      return;
+    }
+    const payload = JSON.stringify(cache ?? {}, null, 2) + '\n';
+    const temp = `${file}.${randomUUID()}.tmp`;
+    inFlight = (async () => {
+      try {
+        await fsp.mkdir(path.dirname(file), { recursive: true });
+        await fsp.writeFile(temp, payload, { mode: 0o600, flag: 'wx' });
+        await fsp.rename(temp, file);
+        writeError = void 0;
+      } catch (error) {
+        // An EPERM'd rename on Windows used to leave one *.tmp behind per call.
+        writeError = error;
+        await fsp.rm(temp, { force: true }).catch(() => {});
+      }
+    })().then(() => {
+      inFlight = void 0;
+      if (overdue) {
+        overdue = false;
+        persist();
+      } else if (writeError) try { onWriteError(writeError); } catch {}
+    });
+  }
+  function read() { return cache ?? load(); }
   function update(patch) {
     const next = { ...read(), ...patch, schema: 3 };
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    const temp = `${file}.${randomUUID()}.tmp`;
-    fs.writeFileSync(temp, JSON.stringify(next, null, 2) + '\n', { mode: 0o600, flag: 'wx' });
-    fs.renameSync(temp, file);
+    cache = next;
+    persist();
     return next;
   }
-  return { read, update };
+  async function flush() {
+    while (inFlight) await inFlight;
+    if (writeError) throw Object.assign(new Error('onboarding policy could not be persisted'), { code: 'POLICY_UNWRITABLE', cause: writeError });
+  }
+  return { read, update, flush };
 }
+
 export function configuredRoute(policy, sessionId) {
   return policy.sessionRoutes?.[sessionId]?.route ?? policy.route;
 }
-export async function rotationReadiness(pool, route) {
+export async function rotationReadiness(pool, route, { signal, timeoutMs = DEFAULT_HOST_TIMEOUT_MS } = {}) {
   if (route.provider === 'our-free-model' || route.provider === 'our-free-model-region') {
     return { available: false, exercised: false, reason: 'PUBLIC_POOL_HAS_NO_ACCOUNTS', next: '需要账号轮换时，显式指定已添加至少两个可用账号的同一 OFM 渠道。' };
   }
   if (!pool || typeof pool.getAvailableAccount !== 'function') return { available: false, exercised: false, reason: 'OFM_ACCOUNT_POOL_UNAVAILABLE', next: '在 OFM 中检查账号渠道包是否已就绪。' };
   // Use OFM's own selection predicate, including enabled credentials/model
   // rate limits. Never copy returned credentials or account identities to state.
-  const first = await pool.getAvailableAccount(route.provider, route.model, new Set());
+  const first = await guard(() => pool.getAvailableAccount(route.provider, route.model, new Set()), { signal, timeoutMs, label: 'OFM 账号池预检' });
   if (!first?.entry?.id) return { available: false, exercised: false, reason: 'NO_USABLE_ACCOUNT', next: '在 OFM 中登录并启用本人账号，核对登录有效性及额度。' };
-  const second = await pool.getAvailableAccount(route.provider, route.model, new Set([first.entry.id]));
+  const second = await guard(() => pool.getAvailableAccount(route.provider, route.model, new Set([first.entry.id])), { signal, timeoutMs, label: 'OFM 账号池预检' });
   return second?.entry?.id && second.entry.id !== first.entry.id
     ? { available: true, exercised: false, reason: 'OFM_CAN_SELECT_DISTINCT_BACKUP', next: '账号池可选择不同备用账号；实际额度故障切换仍由 OFM 处理，未人为耗尽额度。' }
     : { available: false, exercised: false, reason: 'SECOND_USABLE_ACCOUNT_REQUIRED', next: '在同一 OFM 渠道添加并启用第二个可用账号；不同渠道各一个账号不等于账号池轮换。' };
 }
-export async function onboard({ catalog, current, provider = 'free', select, store, pool, sessionId, makeDefault = true }) {
+export async function onboard({ catalog, current, provider = 'free', select, store, pool, sessionId, makeDefault = true, signal, timeoutMs = DEFAULT_HOST_TIMEOUT_MS }) {
   const source = normalizeProvider(provider);
   try {
     const route = chooseDeepSeek(catalog, source, current);
@@ -137,7 +219,12 @@ export async function onboard({ catalog, current, provider = 'free', select, sto
       ...(!previous.route || makeDefault ? { provider: source, route } : {}), fallback,
       ...(sessionId ? { sessionRoutes: { ...previous.sessionRoutes, [sessionId]: { provider: source, route } } } : {})
     });
-    const rotation = await rotationReadiness(pool, route);
+    // The host selection is already installed at this point, so an unwritable
+    // policy file is reported instead of turning a confirmed switch into a failure.
+    let persistence;
+    try { await store.flush?.(); }
+    catch (error) { persistence = { ok: false, code: error.code ?? 'POLICY_UNWRITABLE' }; }
+    const rotation = await rotationReadiness(pool, route, { signal, timeoutMs });
     const receipt = sessionId ? state.receipts?.[sessionId] : state.receipt;
     const routed = receipt?.provider === route.provider && receipt.model === route.model && receipt.outcome === 'completed' && Date.now() - receipt.at < 600000;
     const rotationObserved = routed && receipt.accountPoolObserved && receipt.rotationObserved;
@@ -146,6 +233,7 @@ export async function onboard({ catalog, current, provider = 'free', select, sto
     if (rotationObserved) rotation.reason = 'OFM_ACCOUNT_ROTATION_OBSERVED';
     const lastFailure = sessionId ? state.failures?.[sessionId] : state.failure;
     return { status: routed && rotation.available && rotationObserved ? 'complete' : 'needs-verification-or-action', notices: NOTICES, lastFailure: lastFailure ?? null,
+      ...(persistence ? { policyPersistence: persistence } : {}),
       route, modelConfirmed: true, ofmRoutingConfirmed: routed, ofmAccountPoolConfirmed: Boolean(routed && receipt?.accountPoolObserved), automaticOfficialFallback: false, modelRestrictions: false, rotation,
       usageScope: '宿主路由与 OFM 账号选择；上游物理请求与实际扣费以 OFM/账号账本为准。',
       next: failureNext(lastFailure) ?? (!routed ? '在当前会话发送一次已授权的普通消息，再运行 /bfy-ofm status 核对实际 OFM DeepSeek 调用。'
@@ -158,7 +246,11 @@ export async function onboard({ catalog, current, provider = 'free', select, sto
   }
 }
 export function observeStream(store, { onError = () => {} } = {}) {
-  return (request, next) => (async function* () {
+  return (request, next) => {
+    // A request the host did not shape as expected must pass through untouched
+    // instead of throwing inside the observation generator.
+    if (!request || typeof request !== 'object') return next(request);
+    return (async function* () {
       const lane = OFM_PROVIDERS.includes(request.provider) ? 'ofm' : OFFICIAL_PROVIDERS.includes(request.provider) ? 'official' : 'other';
       const trace = { provider: request.provider, model: request.model, accounts: new Set() };
       function record(outcome, failure) {
@@ -184,6 +276,7 @@ export function observeStream(store, { onError = () => {} } = {}) {
         const iterator = stream[Symbol.asyncIterator]();
         const scopedStream = { [Symbol.asyncIterator]: () => ({
           next: (...args) => requestTrace.run(trace, () => iterator.next(...args)),
+          throw: error => iterator.throw ? requestTrace.run(trace, () => iterator.throw(error)) : Promise.reject(error),
           return: (...args) => requestTrace.run(trace, () => iterator.return?.(...args) ?? Promise.resolve({ done: true }))
         }) };
         for await (const chunk of scopedStream) {
@@ -197,6 +290,7 @@ export function observeStream(store, { onError = () => {} } = {}) {
       } catch (error) { record('failed', error); finished = true; throw error; }
       finally { if (!finished) record('unknown'); }
     })();
+  };
 }
 export function officialFallback(catalog, store, confirmed, sessionId) {
   if (confirmed !== true) throw fail('OFFICIAL_CONFIRMATION_REQUIRED', '官方兜底会消耗官方余额、套餐额度或 API 费用；仅在 OFM 无可用 DeepSeek、额度/认证/连接故障时由你主动切回', '确认后手动执行 /bfy-ofm fallback --confirm-official-billing；重新 onboard 会关闭官方兜底。');

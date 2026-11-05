@@ -67,14 +67,45 @@ export function saveConfiguration(file, config) {
   fs.writeFileSync(file, contents, { flag: 'wx', mode: 0o600 });
   return { changed: true, file };
 }
-export function acquireStateLock(dir) {
+const isPidAlive = pid => {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try { process.kill(pid, 0); return true; }
+  catch (error) { return error.code === 'EPERM'; }
+};
+// A killed run used to leave writer.lock behind forever, so every later call
+// reported STATE_BUSY with no way forward. A lock is only ever taken over when
+// its owner process is gone and it has been idle for staleAfterMs.
+export function acquireStateLock(dir, { staleAfterMs = 120000, now = Date.now } = {}) {
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, 'writer.lock');
   const id = randomUUID();
-  try { fs.writeFileSync(file, JSON.stringify({ pid: process.pid, id }), { flag: 'wx', mode: 0o600 }); }
-  catch (error) {
-    if (error.code !== 'EEXIST') throw error;
-    throw Object.assign(new Error(`状态目录已有写入者；确认旧进程退出后再处理 ${file}`), { code: 'STATE_BUSY' });
+  const ownerAlive = () => {
+    let holder;
+    try { holder = JSON.parse(fs.readFileSync(file, 'utf8')); }
+    // An unreadable lock still needs a live owner and elapsed silence to be replaced.
+    catch { return { pid: false, age: statAge() }; }
+    return { pid: isPidAlive(Number(holder.pid)), age: statAge() };
+  };
+  const statAge = () => {
+    try { return Math.max(0, now() - Number(fs.statSync(file).mtimeMs)); }
+    catch { return Number.POSITIVE_INFINITY; }
+  };
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      fs.writeFileSync(file, JSON.stringify({ pid: process.pid, id, at: new Date(now()).toISOString() }), { flag: 'wx', mode: 0o600 });
+      break;
+    } catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+      const owner = ownerAlive();
+      if (owner.pid || !(owner.age > staleAfterMs)) {
+        throw Object.assign(new Error(`状态目录已有写入者；确认旧进程退出后再处理 ${file}`), { code: 'STATE_BUSY' });
+      }
+      fs.rmSync(file, { force: true });
+    }
   }
-  return () => { if (JSON.parse(fs.readFileSync(file, 'utf8')).id === id) fs.unlinkSync(file); };
+  return () => {
+    try { if (JSON.parse(fs.readFileSync(file, 'utf8')).id === id) fs.unlinkSync(file); }
+    // A lost or damaged lock must not mask the real result of the run.
+    catch {}
+  };
 }

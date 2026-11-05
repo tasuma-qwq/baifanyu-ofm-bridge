@@ -176,7 +176,7 @@ test('native plugin registers a useful command; doctor/setup never invoke infere
   const ctx = { commands: { register: d => { definition = d; } }, sessionController: {
     modelCatalog: async () => ({ ...catalog, groups: [{ id: 'our-free-model', models: [{ id: 'deepseek-fixture-free', reasoning: { efforts: [{ id: 'high' }] } }] }] }),
     selectModel: async route => { calls.push(route); return { selected: route }; }
-  }, on() {}, inject() {}, get() {} };
+  }, on() {}, inject() {}, get() {}, llm: { listProviders: () => [{ id: 'our-free-model' }] } };
   apply(ctx, { configFile: file, ofmControl: async () => ({ enabled: true }) });
   assert.equal(definition.name, 'bfy-ofm');
   const invoke = rawInput => definition.handler({ agent: { id: 'invoking-session' }, rawInput, signal: new AbortController().signal });

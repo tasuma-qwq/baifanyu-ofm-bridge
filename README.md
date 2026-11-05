@@ -2,7 +2,7 @@
 
 默认先选 DeepSeek 免费池，也可以显式选择本人已有的 OFM 账号。插件负责接入和查看调用、账号轮换回执；你在 DSH 中手动选择的模型，以及 qq-bridge 自己的选模继续正常生效。
 
-**0.3.1 修复 0.3.0 的全局拦截问题。** 已移除模型拒绝逻辑及聊天创建/恢复时的自动改选。免费池是默认入口，不是只能使用的模型。
+**0.3.2 修复 0.3.1 的启动级崩溃与会话挂死。** 不再把上游 OFM 作为依赖插入自己的装载行（那一行会连带注册第二份 OFM 浏览器半身，可能让桌面端启动审计直接终止），也不再让模型调用链路做同步磁盘写入；所有宿主往返都带上限并可被取消。0.3.1 已修复 0.3.0 的全局拦截问题：已移除模型拒绝逻辑及聊天创建/恢复时的自动改选，免费池是默认入口，不是只能使用的模型。
 
 ## 主要面向 Web + SnowLuma + qq-bridge
 
@@ -12,8 +12,10 @@ QQ ↔ SnowLuma ↔ qq-bridge ↔ DSH Web ↔ OFM
 
 把本插件安装到 **qq-bridge 实际连接的 DSH Web profile**，并使用该实例的 DSH_HOME 和端口。SnowLuma 负责 QQ 接线，qq-bridge 负责把消息交给 DSH；本插件不接管它们的消息、账号登录、人格或记忆。
 
+先安装 OFM 本身，再装本插件。OFM 由 [Ebony-Vinyl/dsh-our-free-model](https://github.com/Ebony-Vinyl/dsh-our-free-model) 维护，请按其仓库当前的说明装载官方制品（注意 npm 上的裸名 `dsh-our-free-model` 不是该仓库发布的）；桌面端用应用内插件管理器。本插件不会再替你挂一份 OFM。
+
 ```sh
-dsh plugin --profile web add baifanyu-ofm@0.3.1
+dsh plugin --profile web add baifanyu-ofm@0.3.2
 ```
 
 遵守宿主正常安装、加载与供应链等待期。安装后在对应 DSH Web 会话说：
@@ -49,9 +51,9 @@ onboard 不指定来源时选免费池；指定渠道时选该渠道的 DeepSeek
 
 status 分别报告当前模型、OFM 实际调用、账号池备用预检和真实切换观察。预检不等于发生过切换；一次成功也不保证长期可用。账号调度、冷却与恢复仍由 OFM 管理。本插件只保存路由与回执，不保存提示词、回复正文、账号标识或凭据；观察记录出错也不会阻止模型调用。
 
-缺少 OFM 时，bundle 带入官方 `@ebony-vinyl/dsh-our-free-model@2.8.0`；已有 OFM 则复用。桌面端使用应用插件管理器安装，作为补充支持场景。其他机器人框架尚未单独验收。
+OFM 是前置条件，不是本插件的依赖：0.3.2 起不再携带或挂载上游 OFM 副本，改为按能力检测（账号池服务或 OFM 模型路由存在）。缺少 OFM 时 onboard 与 status 返回 OFM_NOT_MOUNTED 并给出安装入口，不改动你的 profile 配置。桌面端使用应用插件管理器安装，作为补充支持场景。其他机器人框架尚未单独验收。
 
-[接入说明](docs/deepseek-onboarding.md) · [验证记录](docs/validation.md) · [账号配置](docs/public-pool-and-accounts.md)
+[接入说明](docs/deepseek-onboarding.md) · [验证记录](docs/validation.md) · [账号配置](docs/public-pool-and-accounts.md) · [0.3.1 崩溃与挂死调研](docs/crash-investigation-0.3.1.md)
 
 ## 来源与许可
 

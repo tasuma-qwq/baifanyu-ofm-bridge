@@ -1,6 +1,6 @@
 {
   "name": "baifanyu-ofm",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "白饭鱼 OFM：DeepSeek 一句话接入、原思考档位保持与账号轮换回执，不限制手动选模",
   "type": "module",
   "license": "MIT",
@@ -10,7 +10,7 @@
   "main": "./src/index.js",
   "bin": { "bfy-ofm": "./bin/bfy-ofm.mjs" },
   "files": ["bin", "src", "docs/architecture.md", "docs/integration.md", "docs/deepseek-onboarding.md", "docs/public-pool-and-accounts.md", "docs/validation.md", "docs/marketplace.md", "docs/provenance.json", "docs/memory-preview.md", "docs/video-script.md", "examples", "third_party", "config.example.json", "cordis.patch.yml", "README.md", "AGENTS.md", "LICENSE", "NOTICE.md"],
-  "engines": { "node": "^22.19.0 || >=24.0.0" },
+  "engines": { "node": "^22.19.0 || >=24.0.0", "dsh": ">=0.2.0-rc.1" },
   "exports": {
     ".": "./src/index.js",
     "./model-lanes": "./src/model-lanes.js",
@@ -28,7 +28,7 @@
     "setup": "node bin/bfy-ofm.mjs setup",
     "smoke": "node bin/bfy-ofm.mjs smoke"
   },
-  "dependencies": { "ws": "8.22.0", "js-yaml": "4.3.2", "@ebony-vinyl/dsh-our-free-model": "2.8.0" },
+  "dependencies": { "ws": "8.22.0", "js-yaml": "4.3.2" },
   "dsh": { "bundle": { "patch": "./cordis.patch.yml" } },
   "keywords": ["dsh-plugin", "deepseek-harness", "ofm", "model-routing"],
   "repository": {

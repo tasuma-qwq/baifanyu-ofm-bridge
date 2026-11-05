@@ -1,10 +1,8 @@
+# Only rows owned by this bundle. A third-party plugin must never be inserted
+# from here: a bare package name also carries that plugin's browser half, and a
+# second copy of it can abort the whole desktop boot (docs/crash-investigation-0.3.1.md).
+# OFM is detected at runtime and installed by the user through the host's plugin manager.
 - insert:
-    - id: baifanyu-ofm-upstream
-      name: '@ebony-vinyl/dsh-our-free-model'
-      disabled: !!js >-
-        [...ctx.get('loader').entries()].some(entry => entry.options.id !== 'baifanyu-ofm-upstream' && (entry.options.id === 'our-free-model' || ['dsh-our-free-model', '@ebony-vinyl/dsh-our-free-model'].includes(entry.options.name)))
-      config:
-        distribution: managed
     - id: baifanyu-ofm
       name: baifanyu-ofm/plugin
       config: {}

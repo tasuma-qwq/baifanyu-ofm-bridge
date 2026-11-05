@@ -87,6 +87,7 @@ test('receipt confirms host routing only, not physical request count or actual c
   for await (const _ of stream) {}
   assert.equal(s.read().receipt.outcome, 'completed');
   assert.equal(s.read().receipt.physicalRequests, 'unknown');
+  await s.flush();
   assert.doesNotMatch(fs.readFileSync(path.join(dir, 'onboarding-policy.json'), 'utf8'), /private-response-sentinel/);
 });
 test('official fallback needs explicit confirmation and a recent unrecovered OFM funding/transport failure', async t => {
@@ -117,6 +118,7 @@ test('models explicitly declaring no reasoning never receive guessed effort', ()
 test('native plugin exposes explicit onboarding without overriding new or resumed sessions', async t => {
   const dir = store(t).dir; const events = new Map(); let command, tool; const selected = [];
   const ctx = { logger: { warn() {} }, on: (name, handler) => events.set(name, handler), get: () => undefined,
+    llm: { listProviders: () => [{ id: 'our-free-model' }, { id: 'our-free-model-region' }] },
     commands: { register: value => { command = value; } },
     inject: (deps, fn) => deps.includes('tools') ? fn({ tools: { register: value => { tool = value; } } }) : undefined,
     sessionController: { modelCatalog: async () => catalog(), selectModel: async request => { selected.push(request); return { selected: request }; },
@@ -186,6 +188,7 @@ test('closing a stream early records unknown rather than a successful model resp
 test('status does not reuse an old OFM receipt after the user changes the actual selection', async t => {
   const dir = store(t).dir; let command; let actual; const events = new Map();
   const ctx = { on: (name, handler) => events.set(name, handler), inject() {}, get() {},
+    llm: { listProviders: () => [{ id: 'our-free-model' }] },
     commands: { register: value => { command = value; } },
     sessionController: { modelCatalog: async () => catalog(), selectModel: async request => { actual = request; return { selected: request }; }, agents: { selectionFor: () => ({ current: actual }) } } };
   apply(ctx, { policyFile: path.join(dir, 'policy.json'), ofmControl: async () => ({ enabled: true }) });
@@ -205,6 +208,7 @@ test('session receipts remain independent without enforcing their saved routes',
   const file = path.join(dir, 'policy.json');
   const events = new Map(); const selections = new Map(); let command;
   const ctx = { on: (name, handler) => events.set(name, handler), inject() {}, get() {},
+    llm: { listProviders: () => [{ id: 'our-free-model' }] },
     commands: { register: value => { command = value; } },
     sessionController: { modelCatalog: async () => catalog(),
       selectModel: async request => { selections.set(request.sessionId, request); return { selected: request }; },

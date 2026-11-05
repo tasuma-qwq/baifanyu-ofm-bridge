@@ -141,7 +141,11 @@ export function createPolicyStore(file, { onWriteError = () => {} } = {}) {
       if (value.schema !== 3) throw new Error('schema');
       cache = value;
     } catch (error) {
-      if (error.code !== 'ENOENT') throw fail('POLICY_UNREADABLE', '接入记录不可读；原文件保留，模型调用不受限制', '检查并恢复策略文件后重新 onboard。');
+      // A missing file surfaces as ENOENT. A missing file whose parent path
+      // component exists as a regular file is ENOENT on Windows but ENOTDIR
+      // on Linux; both mean "no readable policy file yet", and the real cause
+      // of the unwritable location is reported on the write side instead.
+      if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR') throw fail('POLICY_UNREADABLE', '接入记录不可读；原文件保留，模型调用不受限制', '检查并恢复策略文件后重新 onboard。');
       cache = { schema: 3, provider: 'free', route: null, fallback: { active: false }, receipt: null, failure: null };
     }
     return cache;

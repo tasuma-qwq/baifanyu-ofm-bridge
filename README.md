@@ -53,7 +53,7 @@ status 分别报告当前模型、OFM 实际调用、账号池备用预检和真
 
 OFM 是前置条件，不是本插件的依赖：0.3.2 起不再携带或挂载上游 OFM 副本，改为按能力检测（账号池服务或 OFM 模型路由存在）。缺少 OFM 时 onboard 与 status 返回 OFM_NOT_MOUNTED 并给出安装入口，不改动你的 profile 配置。桌面端使用应用插件管理器安装，作为补充支持场景。其他机器人框架尚未单独验收。
 
-[接入说明](docs/deepseek-onboarding.md) · [验证记录](docs/validation.md) · [账号配置](docs/public-pool-and-accounts.md) · [0.3.1 崩溃与挂死调研](docs/crash-investigation-0.3.1.md)
+[接入说明](docs/deepseek-onboarding.md) · [验证记录](docs/validation.md) · [账号配置](docs/public-pool-and-accounts.md) · [与上游 OFM 的契约检修](docs/one-line-onboarding.md) · [0.3.1 崩溃与挂死调研](docs/crash-investigation-0.3.1.md)
 
 ## 来源与许可
 

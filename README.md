@@ -2,7 +2,7 @@
 
 默认先选 DeepSeek 免费池，也可以显式选择本人已有的 OFM 账号。插件负责接入和查看调用、账号轮换回执；你在 DSH 中手动选择的模型，以及 qq-bridge 自己的选模继续正常生效。
 
-**0.3.2 修复 0.3.1 的启动级崩溃与会话挂死。** 不再把上游 OFM 作为依赖插入自己的装载行（那一行会连带注册第二份 OFM 浏览器半身，可能让桌面端启动审计直接终止），也不再让模型调用链路做同步磁盘写入；所有宿主往返都带上限并可被取消。0.3.1 已修复 0.3.0 的全局拦截问题：已移除模型拒绝逻辑及聊天创建/恢复时的自动改选，免费池是默认入口，不是只能使用的模型。
+**0.3.2 修复 0.3.1 的启动级崩溃与会话挂死。** 不再把上游 OFM 作为依赖插入自己的装载行（那一行会连带注册第二份 OFM 浏览器半身，可能让桌面端启动审计直接终止），也不再让模型调用链路做同步磁盘写入；所有宿主往返都带上限并可被取消。**0.3.3 把接入引导整理成三条车道（免费池 → EAC → 本人账号），并新增显式切换渠道的 `bfy_ofm_switch` 工具与 `/bfy-ofm switch` 命令。** 0.3.1 已修复 0.3.0 的全局拦截问题：已移除模型拒绝逻辑及聊天创建/恢复时的自动改选，免费池是默认入口，不是只能使用的模型。
 
 ## 主要面向 Web + SnowLuma + qq-bridge
 
@@ -15,23 +15,25 @@ QQ ↔ SnowLuma ↔ qq-bridge ↔ DSH Web ↔ OFM
 先安装 OFM 本身，再装本插件。OFM 由 [Ebony-Vinyl/dsh-our-free-model](https://github.com/Ebony-Vinyl/dsh-our-free-model) 维护，请按其仓库当前的说明装载官方制品（注意 npm 上的裸名 `dsh-our-free-model` 不是该仓库发布的）；桌面端用应用内插件管理器。本插件不会再替你挂一份 OFM。
 
 ```sh
-dsh plugin --profile web add baifanyu-ofm@0.3.2
+dsh plugin --profile web add baifanyu-ofm@0.3.3
 ```
 
 遵守宿主正常安装、加载与供应链等待期。安装后在对应 DSH Web 会话说：
 
 > 帮大肥鱼接入 OFM，默认先走 DeepSeek 免费池，保持当前思考档位，并检查账号轮换。
 
-模型可调用 `bfy_ofm_onboard`。也可直接运行无需模型推理的命令：
+模型可调用 `bfy_ofm_onboard`；用户点名换渠道时可调用 `bfy_ofm_switch`。也可直接运行无需模型推理的命令：
 
 ```text
 /bfy-ofm onboard
 /bfy-ofm onboard qodercn
 /bfy-ofm onboard trae
+/bfy-ofm switch trae
+/bfy-ofm switch qodercn/dfmodel
 /bfy-ofm status
 ```
 
-onboard 不指定来源时选免费池；指定渠道时选该渠道的 DeepSeek。目标不支持原思考档位时给出原因，不擅自调低。DSH 保存这次显式选模作为默认值；之后的手动选模和桥接选模不受限制，不会被本插件改回免费池。
+onboard 不指定来源时选免费池；指定渠道时选该渠道的 DeepSeek。switch 只执行用户点名的切换，保留原思考档位；EAC 不是可切换车道（GitHub 授权后即目录普通条目）。目标不支持原思考档位时给出原因，不擅自调低。DSH 保存这次显式选模作为默认值；之后的手动选模和桥接选模不受限制，不会被本插件改回免费池。
 
 免费池无账号门槛，但可能限流、拥堵或不可用。需要账号池时，在 OFM 中添加并授权本人已有的 qoder、qodercn、trae 等账号，再显式指定渠道；同一渠道至少两个可用账号才能检查备用。公开池没有可轮换的账号。
 

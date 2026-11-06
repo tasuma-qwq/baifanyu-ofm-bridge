@@ -116,15 +116,15 @@ test('models explicitly declaring no reasoning never receive guessed effort', ()
   assert.equal(resolveLaneEffort({ lane, catalog: catalog(), globalEffort: 'max' }), undefined);
 });
 test('native plugin exposes explicit onboarding without overriding new or resumed sessions', async t => {
-  const dir = store(t).dir; const events = new Map(); let command, tool; const selected = [];
+  const dir = store(t).dir; const events = new Map(); let command; const tools = []; const selected = [];
   const ctx = { logger: { warn() {} }, on: (name, handler) => events.set(name, handler), get: () => undefined,
     llm: { listProviders: () => [{ id: 'our-free-model' }, { id: 'our-free-model-region' }] },
     commands: { register: value => { command = value; } },
-    inject: (deps, fn) => deps.includes('tools') ? fn({ tools: { register: value => { tool = value; } } }) : undefined,
+    inject: (deps, fn) => deps.includes('tools') ? fn({ tools: { register: value => { tools.push(value); } } }) : undefined,
     sessionController: { modelCatalog: async () => catalog(), selectModel: async request => { selected.push(request); return { selected: request }; },
       agents: { selectForNextRequest: (_agent, value) => selected.push(value) } } };
   apply(ctx, { policyFile: path.join(dir, 'native-policy.json'), ofmControl: async () => ({ enabled: true }) });
-  assert.equal(tool.name, 'bfy_ofm_onboard');
+  const tool = tools.find(value => value.name === 'bfy_ofm_onboard');
   const agent = { id: 'current-existing-session', session: { requestHeader: () => undefined } };
   assert.equal(events.has('agent/created'), false);
   assert.equal(selected.length, 0);
@@ -157,6 +157,49 @@ test('rotation observation uses only actual observed selector calls and never sa
   assert.equal(result.ofmAccountPoolConfirmed, true);
   assert.doesNotMatch(fs.readFileSync(path.join(dir, 'onboarding-policy.json'), 'utf8'), /private-first|private-second|private-token/);
   cleanup(); assert.equal(pool.getAvailableAccount, original);
+});
+test('explicit model picks the exact lane and unknown models fail with LANE_NOT_IN_CATALOG', async t => {
+  const s = store(t).value;
+  const result = await onboard({ catalog: catalog(), current: catalog().default, provider: 'qodercn', model: 'dfmodel', select, store: s });
+  assert.equal(result.route.provider, 'qodercn');
+  assert.equal(result.route.model, 'dfmodel');
+  assert.equal(result.route.reasoningEffort, 'max');
+  await assert.rejects(onboard({ catalog: catalog(), current: {}, provider: 'qodercn', model: 'not-in-catalog', select, store: s }), { code: 'LANE_NOT_IN_CATALOG' });
+});
+test('the switch surface is agent-readable and only executes a lane the user named', async t => {
+  const dir = store(t).dir;
+  const events = new Map(); const tools = []; const selected = []; let command;
+  const ctx = { logger: { warn() {} }, on: (name, handler) => events.set(name, handler), get: () => undefined,
+    llm: { listProviders: () => [{ id: 'our-free-model' }] },
+    commands: { register: value => { command = value; } },
+    inject: (deps, fn) => deps.includes('tools') ? fn({ tools: { register: value => { tools.push(value); } } }) : undefined,
+    sessionController: { modelCatalog: async () => catalog(), selectModel: async request => { selected.push(request); return { selected: request }; },
+      agents: { selectionFor: () => ({ current: catalog().default }) } } };
+  apply(ctx, { policyFile: path.join(dir, 'policy.json'), ofmControl: async () => ({ enabled: true }) });
+  // What another AI must be able to restate: the three lanes, the EAC boundary,
+  // and that switching never happens without the user naming the lane.
+  const switchTool = tools.find(x => x.name === 'bfy_ofm_switch');
+  assert.ok(switchTool);
+  assert.match(switchTool.description, /点名的切换/);
+  assert.match(switchTool.description, /EAC 不是可切换车道/);
+  assert.match(switchTool.description, /OFM 账号池/);
+  assert.equal(switchTool.parameters.required.includes('provider'), true);
+  const agent = { id: 'switch-session', session: { requestHeader: () => undefined } };
+  const invoke = rawInput => command.handler({ agent, rawInput, signal: new AbortController().signal });
+  const first = JSON.parse((await invoke('switch qodercn')).text);
+  assert.equal(first.route.provider, 'qodercn');
+  assert.equal(first.route.model, 'dfmodel');
+  assert.equal(first.route.reasoningEffort, 'max'); // the effort the session already had
+  assert.equal(first.switchedFrom, null);
+  assert.equal(selected.at(-1).sessionId, agent.id);
+  const second = JSON.parse((await invoke('switch free')).text);
+  assert.equal(second.switchedFrom.provider, 'qodercn');
+  assert.equal(second.route.model, 'deepseek-v4.1-flash-free');
+  const refused = await invoke('switch eac');
+  assert.equal(refused.kind, 'error');
+  assert.match(refused.text, /EAC_NOT_A_LANE/);
+  const miss = await switchTool.execute({ provider: 'qodercn', model: 'not-in-catalog' }, { agent });
+  assert.equal(miss.code, 'LANE_NOT_IN_CATALOG');
 });
 test('a session-specific failure and consent cannot authorize official charges for other callers', t => {
   const s = store(t).value; s.update({ route });

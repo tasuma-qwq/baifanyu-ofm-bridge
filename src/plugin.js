@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { defaultConfigFile } from './configuration.js';
 import { DshClient } from './dsh-client.js';
-import { createPolicyStore, configuredRoute, guard, onboard, observeStream, rotationReadiness, officialFallback, fail, NOTICES, OFM_PROVIDERS, OFM_ROUTE_PROVIDERS, observeAccountPool, noteFailure, isDeepSeek, failureNext } from './onboarding.js';
+import { createPolicyStore, configuredRoute, guard, onboard, observeStream, rotationReadiness, officialFallback, fail, NOTICES, OFM_PROVIDERS, OFM_ROUTE_PROVIDERS, observeAccountPool, noteFailure, isDeepSeek, failureNext, normalizeProvider } from './onboarding.js';
 
 export const name = 'baifanyu-ofm';
 export const inject = ['commands', 'sessionController', 'llm'];
@@ -77,6 +77,20 @@ export function apply(ctx, options = {}) {
     return { ...result, ofmEnabledByThisRun: ofm.enabledByPlugin === true,
       ...(ofm.enabledByPlugin ? { ofmEnabledNotice: '本次接入把 OFM 总开关从关闭改为启用；这是 OFM 的全局设置，其他会话同样会经由 OFM。' } : {}) };
   }
+  // An explicitly requested lane change reuses the whole onboard path
+  // (catalog choice, guarded selection, receipts, rotation precheck) but never
+  // flips OFM's global switch and never picks a lane the user did not name.
+  async function switchLane(agent, target, { signal } = {}) {
+    if (!ofmMounted()) { const error = ofmMissing(); noteFailure(store, error, agent.id); throw error; }
+    const [rawProvider, rawModel = ''] = String(target ?? '').trim().split('/');
+    const provider = normalizeProvider((rawProvider ?? '').toLowerCase() || 'free');
+    if (provider === 'eac') throw fail('EAC_NOT_A_LANE', 'EAC 是 GitHub 授权解锁的桌面端模型通道，不是本插件的可切换车道', '在 OFM 设置页完成 EAC 授权后，EAC 模型就是目录里的普通条目，直接在 DSH 中选择即可。');
+    const catalog = await guard(() => ctx.sessionController.modelCatalog(), { signal, ...ceiling(), label: '宿主模型目录读取' });
+    const from = configuredRoute(store.read(), agent.id) ?? null;
+    const result = await onboard({ catalog, current: currentSelection(agent, catalog), provider, model: rawModel, store, pool: pool(), sessionId: agent.id, signal, ...ceiling(),
+      select: route => guard(() => ctx.sessionController.selectModel({ sessionId: agent.id, ...route }), { signal, ...ceiling(), label: '宿主选模' }) });
+    return { ...result, switchedFrom: from };
+  }
   async function status(agent, { signal } = {}) {
     const state = store.read();
     const route = configuredRoute(state, agent.id);
@@ -101,7 +115,7 @@ export function apply(ctx, options = {}) {
     reason: error.userSafe ? error.message : '宿主或 OFM 契约不受支持，未宣称接入完成。',
     next: error.next ?? '检查 OFM 是否已加载、账号有效性及宿主兼容版本，再运行 /bfy-ofm onboard。', notices: NOTICES });
   ctx.commands.register({ name: 'bfy-ofm', description: '保持 DeepSeek 和原思考档位，接入 OFM 并检查路由、账号轮换及官方兜底',
-    input: { hint: 'onboard [free|qoder|qodercn|trae] | status | fallback --confirm-official-billing' },
+    input: { hint: 'onboard [free|qoder|qodercn|trae] | switch [provider[/model]] | status | doctor | fallback --confirm-official-billing' },
     handler: async ({ agent, rawInput, signal }) => {
       try {
         signal.throwIfAborted();
@@ -110,6 +124,10 @@ export function apply(ctx, options = {}) {
         if (action === 'doctor') {
           const catalog = await guard(() => ctx.sessionController.modelCatalog(), { signal, ...ceiling(), label: '宿主模型目录读取' });
           return { kind: 'success', text: JSON.stringify({ ...await status(agent, { signal }), ofmProviders: catalog.groups.filter(g => OFM_PROVIDERS.includes(g.id)).map(g => ({ id: g.id, models: g.models.map(m => ({ id: m.id, name: m.name })) })) }, null, 2) };
+        }
+        if (action === 'switch') {
+          const target = rawInput.trim().split(/\s+/).slice(1).filter(Boolean).join('/');
+          return { kind: 'success', text: JSON.stringify(await switchLane(agent, target, { signal }), null, 2) };
         }
         if (action === 'fallback') {
           const route = officialFallback(await ctx.sessionController.modelCatalog(), store, provider === '--confirm-official-billing', agent.id);
@@ -120,7 +138,7 @@ export function apply(ctx, options = {}) {
           await store.flush();
           return { kind: 'success', text: '你已明确启用本会话的官方 DeepSeek 兜底：后续调用可能扣官方余额、套餐额度或 API 费用，不改其他或新会话的默认模型。未重放旧任务；本会话重新 onboard 恢复 OFM 并关闭此兜底。' };
         }
-        if (!['onboard', 'setup', 'chat', 'diary', 'selfReflection'].includes(action)
+        if (!['onboard', 'setup', 'switch', 'chat', 'diary', 'selfReflection'].includes(action)
           && !/deepseek|\bds\b|大肥鱼|免费|ofm/i.test(rawInput)) throw fail('ACTION_INVALID', '使用 /bfy-ofm onboard 开始一句话接入', '明确官方兜底请单独执行 fallback 命令，不通过自然语言猜测授权。');
         const result = await configure(agent, ['onboard', 'setup'].includes(action) ? provider : 'free', { signal });
         return { kind: 'success', text: JSON.stringify(result, null, 2) };
@@ -138,6 +156,20 @@ export function apply(ctx, options = {}) {
       try { return await configure(exec.agent, args.provider ?? 'free', { signal: exec.signal }); }
       // The host stopped listening: report the cancellation instead of inventing
       // a result, but never let one bad call hang the turn.
+      catch (error) { if (exec.signal?.aborted) throw error; return describeError(error); }
+    }
+  }));
+  // Switching is explicit-only: a tool for a lane the user named, never an
+  // automatic failure response — automatic failover stays with OFM's account
+  // pool, and manual or bridge selection is never overridden.
+  ctx.inject(['tools'], scoped => scoped.tools.register({
+    name: 'bfy_ofm_switch',
+    description: '当用户明确要求大肥鱼/DSH 切换到另一条 OFM 渠道或车道（如"切到 trae"、"换 qodercn"、"先用免费池"）时使用。只执行用户点名的切换：保留原思考档位，不动官方兜底，不在失败后自动重试或自动换渠道——自动故障切换仍由 OFM 账号池处理。EAC 不是可切换车道：GitHub 授权后即目录普通条目，直接选即可。返回切换前后路由、确认结果与下一步；切换失败报告原因，不静默回跳。',
+    parameters: { type: 'object', properties: { provider: { type: 'string', enum: ['free', 'qoder', 'qodercn', 'trae', 'trea', 'zcode', 'lobsterai', 'cline', 'loomy', 'raccoon', 'minimax', 'gemini'] }, model: { type: 'string', description: '可选，精确指定渠道内的模型 id（如 deepseek-v4.1-flash）；缺省时自动选该渠道的 DeepSeek' } }, additionalProperties: false, required: ['provider'] },
+    output: { schema: { type: 'object', additionalProperties: true }, render: (_args, result) => [{ type: 'text', text: JSON.stringify(result) }] },
+    execute: async (args, exec) => {
+      if (!exec.agent) return describeError(fail('SESSION_REQUIRED', '需要当前 DSH 会话', '在用户要求切换的会话内执行。'));
+      try { return await switchLane(exec.agent, [args.provider, args.model].filter(Boolean).join('/'), { signal: exec.signal }); }
       catch (error) { if (exec.signal?.aborted) throw error; return describeError(error); }
     }
   }));

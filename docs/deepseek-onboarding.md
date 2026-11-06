@@ -1,4 +1,4 @@
-# 接入行为（0.3.2）
+# 接入行为（0.3.3）
 
 主要场景为 SnowLuma + qq-bridge + DSH Web。安装在桥接实际连接的 web profile 中，核对该实例的端口和 DSH_HOME。
 
@@ -9,6 +9,8 @@
 这次显式操作通过宿主选模接口应用到当前会话，并由宿主保存为默认值。安装、创建或恢复聊天本身不会触发本插件改选。用户手动选模和 qq-bridge 的选模始终正常生效；不限制其他 OFM 模型、聚合模型、自定义模型或官方模型。
 
 OFM 侧共有三条接入车道，按"先跑通、再求稳"引导：① 免费公开池（Kilo 免密，onboard 默认）；② EAC 协付池（在 OFM 设置页完成 GitHub 授权——登录并 star 上游仓库——后解锁，仅桌面端宿主可见，Web 与 CLI 没有）；③ 十个本人账号渠道（qoder、qodercn、trae、zcode、gemini、cline、loomy、raccoon、lobsterai、minimax，onboard 后接渠道名）。各车道的接入方式、可用模型与局限见 [池子与账号](public-pool-and-accounts.md)。EAC 模型无需本插件接入：授权后就是目录里的普通条目，手动或桥接直接选即可。
+
+用户点名换渠道时用 `/bfy-ofm switch [provider[/model]]` 或 `bfy_ofm_switch` 工具：它复用 onboard 的选模、回执与轮换预检路径，但只执行用户点名的切换，不翻转 OFM 总开关，不在失败后自动重试或自动换渠道——自动故障切换仍由 OFM 账号池处理。EAC 不是可切换车道；目录里没有点名的模型时报 LANE_NOT_IN_CATALOG。
 
 ## OFM 安装
 

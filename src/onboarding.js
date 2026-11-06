@@ -207,10 +207,15 @@ export async function rotationReadiness(pool, route, { signal, timeoutMs = DEFAU
     ? { available: true, exercised: false, reason: 'OFM_CAN_SELECT_DISTINCT_BACKUP', next: '账号池可选择不同备用账号；实际额度故障切换仍由 OFM 处理，未人为耗尽额度。' }
     : { available: false, exercised: false, reason: 'SECOND_USABLE_ACCOUNT_REQUIRED', next: '在同一 OFM 渠道添加并启用第二个可用账号；不同渠道各一个账号不等于账号池轮换。' };
 }
-export async function onboard({ catalog, current, provider = 'free', select, store, pool, sessionId, makeDefault = true, signal, timeoutMs = DEFAULT_HOST_TIMEOUT_MS }) {
+export function pickExactRoute(catalog, provider, model, current) {
+  const hit = routes(catalog, provider).find(route => route.model === model);
+  if (!hit) throw fail('LANE_NOT_IN_CATALOG', `模型目录里没有 ${provider}/${model} 这条车道`, '运行 /bfy-ofm doctor 查看目录实际条目；渠道内清单随上游版本与账号状态变化。');
+  return preserveEffort(hit, current);
+}
+export async function onboard({ catalog, current, provider = 'free', model = '', select, store, pool, sessionId, makeDefault = true, signal, timeoutMs = DEFAULT_HOST_TIMEOUT_MS }) {
   const source = normalizeProvider(provider);
   try {
-    const route = chooseDeepSeek(catalog, source, current);
+    const route = model ? pickExactRoute(catalog, source, model, current) : chooseDeepSeek(catalog, source, current);
     const selected = await select(route);
     const actual = selected?.selected ?? selected;
     if (actual?.provider !== route.provider || actual?.model !== route.model

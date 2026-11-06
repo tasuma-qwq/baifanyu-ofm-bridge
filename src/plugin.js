@@ -130,7 +130,7 @@ export function apply(ctx, options = {}) {
   // fallback is deliberately NOT exposed as a boolean an agent can self-approve.
   ctx.inject(['tools'], scoped => scoped.tools.register({
     name: 'bfy_ofm_onboard',
-    description: '当用户要求大肥鱼/DSH 保持 DS(DeepSeek)、将消耗转到 OFM 免费池或已有账号并检查账号轮换时使用。调用前先说明免费池无门槛但不稳定；推荐本人已有账号，低档更快只是建议，不主动改档。默认 free，保留思考档位，不开启官方兜底。返回三项判据与未完成原因、下一步。不要把公开池叫作多账号池，不把等价金额当扣款。',
+    description: '当用户要求大肥鱼/DSH 保持 DS(DeepSeek)、将消耗转到 OFM 免费池或已有账号并检查账号轮换时使用。接入分三条车道，按"先跑通、再求稳"引导：① 免费公开池（默认 free）无需账号，共享且不稳定，上游可能记录 prompt；② EAC 协付池需在 OFM 设置页完成 GitHub 授权（登录并 star 上游仓库）后解锁，仅桌面端宿主可见，Web/CLI 没有；③ 本人账号渠道（qoder/qodercn/trae/zcode/gemini/cline/loomy/raccoon/lobsterai/minimax）最可控，同渠道至少两个可用账号才构成账号轮换。低档更快只是建议，不主动改档；保留思考档位，不开启官方兜底。返回三项判据与未完成原因、下一步。不要把公开池叫作多账号池，不把等价金额当扣款。',
     parameters: { type: 'object', properties: { provider: { type: 'string', enum: ['free', 'qoder', 'qodercn', 'trae', 'trea', 'zcode', 'lobsterai', 'cline', 'loomy', 'raccoon', 'minimax', 'gemini'] } }, additionalProperties: false },
     output: { schema: { type: 'object', additionalProperties: true }, render: (_args, result) => [{ type: 'text', text: JSON.stringify(result) }] },
     execute: async (args, exec) => {

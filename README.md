@@ -51,7 +51,7 @@ onboard 不指定来源时选免费池；指定渠道时选该渠道的 DeepSeek
 
 status 分别报告当前模型、OFM 实际调用、账号池备用预检和真实切换观察。预检不等于发生过切换；一次成功也不保证长期可用。账号调度、冷却与恢复仍由 OFM 管理。本插件只保存路由与回执，不保存提示词、回复正文、账号标识或凭据；观察记录出错也不会阻止模型调用。
 
-OFM 是前置条件，不是本插件的依赖：0.3.2 起不再携带或挂载上游 OFM 副本，改为按能力检测（账号池服务或 OFM 模型路由存在）。缺少 OFM 时 onboard 与 status 返回 OFM_NOT_MOUNTED 并给出安装入口，不改动你的 profile 配置。桌面端使用应用插件管理器安装，作为补充支持场景。其他机器人框架尚未单独验收。
+OFM 是前置条件，不是本插件的依赖：0.3.2 起不再携带或挂载上游 OFM 副本，改为按能力检测（账号池服务或 OFM 模型路由存在）。缺少 OFM 时 onboard 与 status 返回 OFM_NOT_MOUNTED 并给出安装入口，不改动你的 profile 配置。桌面端使用应用插件管理器安装，作为补充支持场景。其他机器人框架尚未单独验收。OFM 内有三条接入车道——免费公开池（Kilo 免密，onboard 默认）、EAC 协付池（GitHub 登录并 star 上游仓库解锁，仅桌面端可见）、十个本人账号渠道（qoder/qodercn/trae/zcode/gemini/cline/loomy/raccoon/lobsterai/minimax）——各自的接入方式、可用模型与局限见[池子与账号](docs/public-pool-and-accounts.md)。
 
 [接入说明](docs/deepseek-onboarding.md) · [验证记录](docs/validation.md) · [账号配置](docs/public-pool-and-accounts.md) · [与上游 OFM 的契约检修](docs/one-line-onboarding.md) · [0.3.1 崩溃与挂死调研](docs/crash-investigation-0.3.1.md)
 

@@ -8,6 +8,8 @@
 
 这次显式操作通过宿主选模接口应用到当前会话，并由宿主保存为默认值。安装、创建或恢复聊天本身不会触发本插件改选。用户手动选模和 qq-bridge 的选模始终正常生效；不限制其他 OFM 模型、聚合模型、自定义模型或官方模型。
 
+OFM 侧共有三条接入车道，按"先跑通、再求稳"引导：① 免费公开池（Kilo 免密，onboard 默认）；② EAC 协付池（在 OFM 设置页完成 GitHub 授权——登录并 star 上游仓库——后解锁，仅桌面端宿主可见，Web 与 CLI 没有）；③ 十个本人账号渠道（qoder、qodercn、trae、zcode、gemini、cline、loomy、raccoon、lobsterai、minimax，onboard 后接渠道名）。各车道的接入方式、可用模型与局限见 [池子与账号](public-pool-and-accounts.md)。EAC 模型无需本插件接入：授权后就是目录里的普通条目，手动或桥接直接选即可。
+
 ## OFM 安装
 
 本插件不安装、不挂载、也不携带 OFM 副本。0.3.1 曾把官方 scoped OFM 作为依赖并从 bundle patch 里再插入一行，那一行按裸包名挂载，会连带把 OFM 的浏览器半身再注册一次；其结果是同一次安装的效果取决于装载顺序，最坏情况是桌面端启动审计直接终止（见 docs/crash-investigation-0.3.1.md）。0.3.2 起改为按能力检测：宿主提供了 OFM 的账号池服务，或已注册 our-free-model / our-free-model-region 路由，才认为 OFM 可用；否则 onboard 与 status 直接返回 OFM_NOT_MOUNTED 及安装入口，不去探测宿主接口，也不会替你写 profile 配置。
